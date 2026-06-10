@@ -309,22 +309,14 @@ function parseFC5eXML(xml) {
 }
 
 // ── Classify a single ability text ──────────────────
+const RE_REACTION = /as a reaction|use (?:your|a) reaction|your reaction to|como reacci[oó]n|reacci[oó]n\s*[-\u2013]|llevar a cabo una reacci/i;
+const RE_BONUS    = /as a bonus action|bonus action to|bonus action on your turn|acci[oó]n adicional|acci[oó]n adici[oó]nal|parte de la acci[oó]n adicional/i;
+const RE_ACTION   = /as an action[^s]|using an action|as your action|como acci[oó]n[^e]|llevar a cabo la acci[oó]n/i;
+
 function detectAction(name, text) {
-  const tl = text.toLowerCase();
-  const nl = name.toLowerCase();
-
-  // Reaction — check before bonus action
-  if (/as a reaction|use (?:your|a) reaction|use a reaction|your reaction to|
-      como reacci[oó]n|reacci[oó]n\s*[-–]|llevar a cabo una reacci/x.test(tl)) return 'reaction';
-
-  // Bonus action
-  if (/as a bonus action|bonus action to|bonus action on your turn|
-      acci[oó]n adicional|acci[oó]n adici[oó]nal|parte de la acci[oó]n adicional/x.test(tl)) return 'bonus';
-
-  // Action
-  if (/as an action[^s]|using an action|as your action|
-      como acci[oó]n[^es]|llevar a cabo la acci[oó]n/x.test(tl)) return 'action';
-
+  if (RE_REACTION.test(text)) return 'reaction';
+  if (RE_BONUS.test(text))    return 'bonus';
+  if (RE_ACTION.test(text))   return 'action';
   return null;
 }
 
@@ -344,10 +336,7 @@ function shortDesc(text) {
   return clean.slice(0, 110) + (clean.length > 110 ? '…' : '');
 }
 
-const SKIP_NAMES = /^(description|descripci[oó]n|characteristics|características|
-  starting\s|multiclass|proficiency|equipment|languages|idiomas|age|size|speed|
-  ability score improvement|style$|instructor$|well-rounded|trained for|
-  creating a|heraldic|xanathar)/xi;
+const SKIP_NAMES = /^(description|descripci[oó]n|characteristics|starting\s|multiclass|proficiency|equipment|languages|idiomas|age|size|speed|ability score improvement|style$|instructor$|well-rounded|trained for|creating a|heraldic|xanathar)/i;
 
 function buildAbilities(entries, level, mods, prof, cName) {
   const out = { action:[], bonus:[], reaction:[] };
