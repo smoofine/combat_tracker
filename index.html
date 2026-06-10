@@ -19,183 +19,138 @@
   --green:#5dd98a;--green-bg:rgba(93,217,138,0.12);--green-border:rgba(93,217,138,0.3);
   --amber:#f0b84a;--amber-bg:rgba(240,184,74,0.12);--amber-border:rgba(240,184,74,0.3);
   --red:#f06060;--red-bg:rgba(240,96,96,0.12);--red-border:rgba(240,96,96,0.3);
-  --r:10px;--r-sm:7px;
+  --r:10px;--r-sm:7px
 }
 html,body{height:100%;background:var(--bg);color:var(--text);
   font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
   font-size:15px;line-height:1.45;overscroll-behavior:none}
 
 /* ── Import Screen ─────────────────────────────────── */
-#screen-import{
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
-  min-height:100dvh;padding:2rem;text-align:center;gap:0
-}
-.imp-rune{font-size:2.8rem;margin-bottom:1.2rem;opacity:.9}
-.imp-title{font-size:1.35rem;font-weight:700;letter-spacing:-.01em;margin-bottom:.5rem}
-.imp-sub{color:var(--muted);font-size:.88rem;line-height:1.7;margin-bottom:2rem;max-width:280px}
-.imp-sub code{
-  background:var(--s2);color:var(--blue);padding:1px 6px;border-radius:4px;
-  font-family:monospace;font-size:.83rem
-}
-.btn-primary{
-  background:var(--blue);color:#fff;border:none;
-  padding:14px 0;border-radius:var(--r);font-size:.97rem;font-weight:600;
-  cursor:pointer;width:100%;max-width:300px;letter-spacing:.01em
-}
+#screen-import{display:none;flex-direction:column;align-items:center;justify-content:center;
+  min-height:100dvh;padding:2rem;text-align:center}
+.imp-rune{font-size:2.8rem;margin-bottom:1.2rem}
+.imp-title{font-size:1.35rem;font-weight:700;margin-bottom:.5rem}
+.imp-sub{color:var(--muted);font-size:.88rem;line-height:1.7;margin-bottom:2rem;max-width:300px}
+.imp-sub code{background:var(--s2);color:var(--blue);padding:1px 6px;border-radius:4px;font-family:monospace;font-size:.83rem}
+.btn-primary{background:var(--blue);color:#fff;border:none;padding:14px 0;
+  border-radius:var(--r);font-size:.97rem;font-weight:600;cursor:pointer;width:100%;max-width:300px}
 .btn-primary:active{opacity:.8}
 #file-input{display:none}
-.imp-hint{margin-top:1.2rem;font-size:.78rem;color:var(--hint)}
+.imp-hint{margin-top:1.2rem;font-size:.75rem;color:var(--hint);line-height:1.6}
 
 /* ── Tracker Screen ────────────────────────────────── */
 #screen-tracker{display:none;min-height:100dvh;flex-direction:column}
 
 /* Header */
-.header{
-  background:var(--s1);border-bottom:1px solid var(--border);
+.header{background:var(--s1);border-bottom:1px solid var(--border);
   padding:10px 14px;display:flex;align-items:center;gap:8px;
-  position:sticky;top:0;z-index:20
-}
+  position:sticky;top:0;z-index:20}
 .hdr-info{flex:1;min-width:0}
 .hdr-name{font-weight:700;font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hdr-meta{font-size:.73rem;color:var(--muted);margin-top:1px}
 .round-ctrl{display:flex;align-items:center;gap:4px;flex-shrink:0}
-.round-btn{
-  background:var(--s2);border:1px solid var(--border2);color:var(--muted);
-  width:24px;height:24px;border-radius:50%;cursor:pointer;
-  font-size:1rem;display:flex;align-items:center;justify-content:center;line-height:1
-}
+.round-btn{background:var(--s2);border:1px solid var(--border2);color:var(--muted);
+  width:24px;height:24px;border-radius:50%;cursor:pointer;font-size:1rem;
+  display:flex;align-items:center;justify-content:center;line-height:1}
 .round-btn:active{opacity:.6}
-.round-display{
-  background:var(--s2);border:1px solid var(--border);
-  padding:3px 10px;border-radius:14px;font-size:.78rem;
-  color:var(--muted);white-space:nowrap
-}
+.round-display{background:var(--s2);border:1px solid var(--border);
+  padding:3px 10px;border-radius:14px;font-size:.78rem;color:var(--muted);white-space:nowrap}
 .round-display span{color:var(--text);font-weight:600}
 
 /* Content */
 .content{padding:12px 14px 32px;flex:1}
 
-/* HP + PC Block */
-.vitals{
-  background:var(--s1);border:1px solid var(--border);border-radius:var(--r);
-  padding:12px 14px;margin-bottom:10px;display:flex;gap:12px
-}
-.vital-half{flex:1;min-width:0}
-.vital-label{font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px}
-.hp-controls{display:flex;align-items:center;gap:6px}
-.adj-btn{
-  background:var(--s2);border:1px solid var(--border2);color:var(--text);
+/* HP row */
+.hp-row{display:flex;align-items:center;gap:8px;margin-bottom:10px;
+  background:var(--s1);border:1px solid var(--border);border-radius:var(--r);padding:10px 14px}
+.hp-label{font-size:.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;flex:1}
+.hp-controls{display:flex;align-items:center;gap:8px}
+.adj-btn{background:var(--s2);border:1px solid var(--border2);color:var(--text);
   width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:1.1rem;
-  display:flex;align-items:center;justify-content:center
-}
+  display:flex;align-items:center;justify-content:center}
 .adj-btn:active{opacity:.6}
-.hp-val{font-size:1.15rem;font-weight:700;min-width:68px;text-align:center}
+.hp-val{font-size:1.15rem;font-weight:700;min-width:72px;text-align:center}
 .hp-max{font-size:.78rem;color:var(--muted);font-weight:400}
+.hp-temp{font-size:.75rem;color:var(--amber);margin-left:2px}
 
-/* PC dots */
-.pc-row{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
-.pc-val{font-size:1.15rem;font-weight:700;margin-right:4px}
-.pc-max{font-size:.78rem;color:var(--muted);font-weight:400;margin-right:6px}
-.pc-dot{
-  width:19px;height:19px;border-radius:50%;cursor:pointer;flex-shrink:0;
-  border:1.5px solid var(--hint);background:transparent;transition:background .1s,border-color .1s
-}
-.pc-dot.on{background:var(--blue);border-color:var(--blue)}
-.pc-dot:active{opacity:.6}
+/* Tracker cards */
+.trackers-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:6px;margin-bottom:10px}
+.tcard{background:var(--s1);border:1px solid var(--border);border-radius:var(--r-sm);padding:9px 10px}
+.tcard-label{font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tcard-dots{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:4px}
+.tdot{width:16px;height:16px;border-radius:50%;cursor:pointer;flex-shrink:0;
+  border:1.5px solid var(--hint);background:transparent;transition:background .1s,border-color .1s}
+.tdot.on{background:var(--blue);border-color:var(--blue)}
+.tdot:active{opacity:.6}
+.tcard-num{display:flex;align-items:center;gap:6px}
+.tnum-val{font-size:1.1rem;font-weight:700}
+.tnum-max{font-size:.78rem;color:var(--muted)}
+.tnum-btn{background:var(--s2);border:1px solid var(--border2);color:var(--text);
+  width:24px;height:24px;border-radius:50%;cursor:pointer;font-size:1rem;
+  display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.tnum-btn:active{opacity:.6}
+.tcard-dice{font-size:.95rem;font-weight:600;color:var(--amber);letter-spacing:.02em;margin-bottom:3px}
+.tcard-reset{font-size:.68rem;color:var(--hint)}
 
-/* Badges */
-.badges{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:9px}
-.badge{
-  display:inline-flex;align-items:center;gap:5px;
-  padding:5px 11px;border-radius:20px;font-size:.78rem;font-weight:500;
-  border:1px solid transparent;cursor:pointer;transition:opacity .1s
-}
-.badge:active{opacity:.7}
-.b-off{background:var(--s2);color:var(--muted);border-color:var(--border)}
-.b-on{background:var(--green-bg);color:var(--green);border-color:var(--green-border)}
-.b-spent{background:var(--amber-bg);color:var(--amber);border-color:var(--amber-border)}
-.b-dead{background:var(--s2);color:var(--hint);border-color:var(--border);cursor:default}
-
-/* Controls row */
+/* Controls */
 .ctrl-row{display:flex;gap:5px;margin-bottom:12px}
-.btn-ctrl{
-  flex:1;background:var(--s2);border:1px solid var(--border);color:var(--text);
-  padding:8px 4px;border-radius:var(--r-sm);font-size:.78rem;cursor:pointer;text-align:center
-}
+.btn-ctrl{flex:1;background:var(--s2);border:1px solid var(--border);color:var(--text);
+  padding:8px 4px;border-radius:var(--r-sm);font-size:.78rem;cursor:pointer;text-align:center}
 .btn-ctrl:active{opacity:.6}
 .btn-ctrl.accent{color:var(--blue);border-color:var(--blue-border)}
 .btn-ctrl.danger{color:var(--red);border-color:var(--red-border)}
 
 /* Section */
-.section{margin-bottom:13px}
+.section{margin-bottom:12px}
 .sec-head{display:flex;align-items:center;gap:7px;margin-bottom:7px}
 .sec-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
-.d-action{background:var(--blue)}
-.d-bonus{background:var(--green)}
-.d-reaction{background:var(--amber)}
-.d-combo{background:var(--muted)}
+.d-action{background:var(--blue)} .d-bonus{background:var(--green)}
+.d-reaction{background:var(--amber)} .d-combo{background:var(--muted)}
 .sec-name{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
 .sec-used{margin-left:auto;font-size:.7rem;color:var(--red)}
 
 /* Ability button */
-.ab{
-  width:100%;text-align:left;background:var(--s1);
-  border:1px solid var(--border);border-radius:var(--r-sm);
-  padding:9px 11px;margin-bottom:4px;cursor:pointer;
+.ab{width:100%;text-align:left;background:var(--s1);border:1px solid var(--border);
+  border-radius:var(--r-sm);padding:9px 11px;margin-bottom:4px;cursor:pointer;
   color:var(--text);font-family:inherit;font-size:.88rem;
-  display:flex;align-items:flex-start;gap:9px;
-  transition:opacity .12s
-}
+  display:flex;align-items:flex-start;gap:9px;transition:opacity .12s}
 .ab:active{opacity:.65}
 .ab.used{opacity:.35;cursor:default;text-decoration:line-through;text-decoration-color:var(--hint)}
 .ab.locked{opacity:.3;cursor:not-allowed}
 .ab-main{flex:1;min-width:0}
 .ab-name{font-weight:600;margin-bottom:1px}
 .ab-desc{font-size:.76rem;color:var(--muted);line-height:1.45}
-.ab-badges{display:flex;gap:4px;flex-direction:column;align-items:flex-end;flex-shrink:0;padding-top:1px}
-.cost{
-  font-size:.7rem;padding:2px 7px;border-radius:10px;white-space:nowrap;font-weight:500
-}
-.c-pc{background:var(--blue-bg);color:var(--blue)}
+.ab-src{font-size:.66rem;color:var(--hint);margin-top:2px}
+.ab-costs{display:flex;gap:4px;flex-direction:column;align-items:flex-end;flex-shrink:0;padding-top:1px}
+.cost{font-size:.7rem;padding:2px 7px;border-radius:10px;white-space:nowrap;font-weight:500}
+.c-blue{background:var(--blue-bg);color:var(--blue)}
 .c-free{background:var(--s3);color:var(--muted)}
 .c-locked{background:var(--red-bg);color:var(--red)}
+.c-amber{background:var(--amber-bg);color:var(--amber)}
 
-/* Combo card */
-.combo{
-  border-left:3px solid var(--blue-border);background:var(--s1);
-  border-radius:0 var(--r-sm) var(--r-sm) 0;padding:9px 11px;
-  margin-bottom:5px;cursor:pointer
-}
+/* Combo */
+.combo{border-left:3px solid var(--blue-border);background:var(--s1);
+  border-radius:0 var(--r-sm) var(--r-sm) 0;padding:9px 11px;margin-bottom:5px;cursor:pointer}
 .combo:active{opacity:.65}
 .combo.locked{border-left-color:var(--hint);opacity:.4;cursor:default}
 .combo-name{font-weight:600;font-size:.88rem;margin-bottom:3px}
 .combo-steps{font-size:.75rem;color:var(--muted);line-height:1.6}
 
-/* Divider */
 .div{height:1px;background:var(--border);margin:10px 0}
-
-/* Footer */
-.footer-btn{
-  background:var(--s2);border:1px solid var(--border);color:var(--muted);
-  padding:9px;border-radius:var(--r-sm);font-size:.78rem;cursor:pointer;
-  width:100%;text-align:center;margin-top:14px
-}
+.footer-btn{background:var(--s2);border:1px solid var(--border);color:var(--muted);
+  padding:9px;border-radius:var(--r-sm);font-size:.78rem;cursor:pointer;width:100%;text-align:center;margin-top:14px}
 .footer-btn:active{opacity:.6}
 
-/* Toast */
-#toast{
-  position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);
-  background:var(--s3);border:1px solid var(--border2);
-  color:var(--text);padding:9px 18px;border-radius:20px;font-size:.83rem;
-  opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;z-index:100;
-  white-space:nowrap
-}
+#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);
+  background:var(--s3);border:1px solid var(--border2);color:var(--text);
+  padding:9px 18px;border-radius:20px;font-size:.83rem;
+  opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;z-index:100;white-space:nowrap}
 #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 </style>
 </head>
 <body>
 
-<!-- ── Import Screen ─────────────────────────────── -->
 <div id="screen-import">
   <div class="imp-rune">⚔️</div>
   <div class="imp-title">Combat Tracker</div>
@@ -208,10 +163,9 @@ html,body{height:100%;background:var(--bg);color:var(--text);
     Seleccionar XML de FC5e
   </button>
   <input type="file" id="file-input" accept=".xml,text/xml,application/xml">
-  <p class="imp-hint">En Android también puedes compartir directamente<br>desde FC5e si instalaste esta app.</p>
+  <p class="imp-hint">En Android, si instalaste esta PWA, FC5e puede<br>compartir el XML directamente aquí.</p>
 </div>
 
-<!-- ── Tracker Screen ────────────────────────────── -->
 <div id="screen-tracker">
   <div class="header">
     <div class="hdr-info">
@@ -231,198 +185,286 @@ html,body{height:100%;background:var(--bg);color:var(--text);
 
 <script>
 // ═══════════════════════════════════════════════════
-// STATE
+//  HELPERS
 // ═══════════════════════════════════════════════════
-let char = null;
-let G = {
-  round: 1,
-  hp: null,
-  actionUsed: false,
-  bonusUsed: false,
-  reactionUsed: false,
-  oncePerTurn: {},
-  trackers: {},
-  buffs: {}
-};
+const $  = (el, sel) => el?.querySelector(sel)?.textContent?.trim() ?? '';
+const $$ = (el, sel) => [...(el?.querySelectorAll(sel) ?? [])];
 
 // ═══════════════════════════════════════════════════
-// XML PARSER
+//  STATE
+// ═══════════════════════════════════════════════════
+let char = null;
+let G = { round:1, hp:null, actionUsed:false, bonusUsed:false,
+  reactionUsed:false, oncePerTurn:{}, trackers:{}, buffs:{} };
+
+// ═══════════════════════════════════════════════════
+//  XML PARSER
 // ═══════════════════════════════════════════════════
 function parseFC5eXML(xml) {
   const doc = new DOMParser().parseFromString(xml, 'text/xml');
-  const err = doc.querySelector('parsererror');
-  if (err) throw new Error('XML malformado');
-
-  const $ = (el, sel) => el?.querySelector(sel)?.textContent?.trim() ?? '';
-  const $$ = (el, sel) => [...(el?.querySelectorAll(sel) ?? [])];
+  if (doc.querySelector('parsererror')) throw new Error('XML malformado');
 
   const ch = doc.querySelector('character');
   if (!ch) throw new Error('No se encontró elemento character');
 
-  const name    = $(ch, 'name');
-  const hpMax   = parseInt($(ch, 'hpMax'))     || 10;
-  const hpCur   = parseInt($(ch, 'hpCurrent')) || hpMax;
+  const name   = $(ch, 'name').split('||')[0].trim();
+  const hpMax  = parseInt($(ch, 'hpMax'))     || 10;
+  const hpCur  = parseInt($(ch, 'hpCurrent')) || hpMax;
 
-  // Ability scores → modifiers
-  const scores  = $(ch, 'abilities').split(',').map(Number);
+  const scores = $(ch, 'abilities').replace(/,$/, '').split(',').map(Number);
   const [str, dex, con, int_, wis, cha] = scores;
   const m = s => Math.floor((s - 10) / 2);
   const mods = { str:m(str), dex:m(dex), con:m(con), int:m(int_), wis:m(wis), cha:m(cha) };
 
-  // Class
-  const cls   = ch.querySelector('class');
-  const cName = $(cls, 'name');
-  const cLvl  = parseInt($(cls, 'level')) || 1;
-  const prof  = Math.ceil(cLvl / 4) + 1;
+  const cls    = ch.querySelector('class');
+  const cName  = $(cls, 'name');
+  const cLvl   = parseInt($(cls, 'level')) || 1;
+  const prof   = Math.ceil(cLvl / 4) + 1;
   const raceName = $(ch.querySelector('race'), 'name');
 
-  // Trackers (resources)
-  const trackers = $$(cls, 'tracker').map((t, i) => ({
-    id:        `t${i}`,
-    label:     $(t, 'label'),
-    type:      parseInt($(t, 'type'))     || 1,  // 1=uses, 2=dice
-    resetType: parseInt($(t, 'resetType'))|| 1,  // 1=short, 2=long
-    max:       parseInt($(t, 'value'))    || 0,
-    formula:   $(t, 'formula')
-  }));
+  // ── Trackers ──────────────────────────────────────
+  // 1. Collect direct <tracker> children of <class>
+  const baseTrackers = {};
+  [...cls.children].forEach(c => {
+    if (c.tagName.toLowerCase() !== 'tracker') return;
+    const label = $(c, 'label');
+    if (!label) return;
+    baseTrackers[label] = {
+      label,
+      type:      parseInt($(c, 'type'))      || 1,
+      resetType: parseInt($(c, 'resetType')) || 0,
+      value:     parseInt($(c, 'value'))     || 0,
+      formula:   $(c, 'formula')
+    };
+  });
 
-  // All feats from class + race + background
-  const feats = [];
-  ['class','race','background'].forEach(src => {
-    const el = ch.querySelector(src);
-    $$(el, 'feat').forEach(f => {
-      const n = $(f, 'name'), t = $(f, 'text');
-      if (n.length > 1) feats.push({ name: n, text: t, source: src });
+  // 2. Scan <autolevel> ≤ cLvl to get correct max values
+  const levelUp = {};
+  $$(cls, 'autolevel').forEach(al => {
+    const alLvl = parseInt($(al, 'level')) || 1;
+    if (alLvl > cLvl) return;
+    $$(al, 'tracker').forEach(t => {
+      const label = $(t, 'label');
+      if (!label) return;
+      if (!levelUp[label] || alLvl >= (levelUp[label]._lvl || 0)) {
+        levelUp[label] = {
+          _lvl:      alLvl,
+          type:      parseInt($(t, 'type'))      || 1,
+          resetType: parseInt($(t, 'resetType')) || 0,
+          value:     parseInt($(t, 'value'))     || 0,
+          formula:   $(t, 'formula')
+        };
+      }
     });
   });
 
-  // Build combat ability list
-  const abilities = buildAbilities(feats, cLvl, mods, prof);
+  // 3. Merge
+  Object.keys(levelUp).forEach(label => {
+    const lu = levelUp[label];
+    if (!baseTrackers[label]) { baseTrackers[label] = { label, ...lu }; return; }
+    const bt = baseTrackers[label];
+    if (lu.formula) bt.formula = lu.formula;
+    if (lu.value  > 0) bt.value = lu.value;
+    if (lu.type)       bt.type  = lu.type;
+    if (lu.resetType > 0) bt.resetType = lu.resetType;
+  });
+
+  // 4. Compute max and filter relevant trackers
+  const trackers = Object.values(baseTrackers).map((t, i) => {
+    t.id = `t${i}`;
+    const n = parseInt(t.formula);
+    const isPureNum = !isNaN(n) && String(n) === t.formula.trim();
+
+    if (t.type === 2 && t.formula.includes('d')) {
+      t.isDice   = true;
+      t.diceFmt  = t.formula;
+      // If value is likely a count of dice (not a die face), use it
+      const likelyCount = t.value > 0 && ![4,6,8,10,12,20].includes(t.value);
+      t.max      = likelyCount ? t.value : 0;
+    } else if (isPureNum) {
+      t.max = n;
+    } else {
+      t.max = t.value || 1;
+    }
+    t.current = t.max;
+    return t;
+  }).filter(t => t.resetType > 0 || (t.isDice && t.max > 0));
+
+  // ── Feats + Items → Abilities ─────────────────────
+  const allFeats = [];
+  ['class','race','background'].forEach(src => {
+    $$(ch.querySelector(src), 'feat').forEach(f => {
+      const n = $(f,'name'), tx = $(f,'text');
+      if (n.length > 1) allFeats.push({ name:n, text:tx, source:src });
+    });
+  });
+
+  const allItems = $$(ch, 'item').map(it => ({
+    name: $(it,'name'), text: $(it,'text'), source:'item'
+  })).filter(it => it.name && it.text);
+
+  const abilities = buildAbilities([...allFeats, ...allItems], cLvl, mods, prof, cName);
 
   return { name, hpMax, hpCur, cName, cLvl, raceName, prof, mods, trackers, abilities };
 }
 
-function buildAbilities(feats, level, mods, prof) {
-  const result = { action:[], bonus:[], reaction:[] };
+// ── Classify a single ability text ──────────────────
+function detectAction(name, text) {
+  const tl = text.toLowerCase();
+  const nl = name.toLowerCase();
 
-  // Always add base attack
-  const atkBonus = Math.max(mods.str, mods.dex) + prof;
-  const atkDmg   = `1d8+${Math.max(mods.str, mods.dex) + prof}`;
-  result.action.push({
+  // Reaction — check before bonus action
+  if (/as a reaction|use (?:your|a) reaction|use a reaction|your reaction to|
+      como reacci[oó]n|reacci[oó]n\s*[-–]|llevar a cabo una reacci/x.test(tl)) return 'reaction';
+
+  // Bonus action
+  if (/as a bonus action|bonus action to|bonus action on your turn|
+      acci[oó]n adicional|acci[oó]n adici[oó]nal|parte de la acci[oó]n adicional/x.test(tl)) return 'bonus';
+
+  // Action
+  if (/as an action[^s]|using an action|as your action|
+      como acci[oó]n[^es]|llevar a cabo la acci[oó]n/x.test(tl)) return 'action';
+
+  return null;
+}
+
+// ── PC cost detection ──────────────────────────────
+function detectPCCost(text) {
+  const m = text.toLowerCase().match(/(?:gastar|gastando|expend)\s+(?:one|1|(\d+))\s+(?:punto|p\.c\.|psionic energy|superiority)/);
+  if (!m) return 0;
+  return m[1] ? parseInt(m[1]) : 1;
+}
+
+// ── Short description from full text ───────────────
+function shortDesc(text) {
+  const clean = text.replace(/\n/g,' ').replace(/\s+/g,' ').trim();
+  // Try to get first sentence
+  const m = clean.match(/^.{20,120}?[.!?]/);
+  if (m) return m[0];
+  return clean.slice(0, 110) + (clean.length > 110 ? '…' : '');
+}
+
+const SKIP_NAMES = /^(description|descripci[oó]n|characteristics|características|
+  starting\s|multiclass|proficiency|equipment|languages|idiomas|age|size|speed|
+  ability score improvement|style$|instructor$|well-rounded|trained for|
+  creating a|heraldic|xanathar)/xi;
+
+function buildAbilities(entries, level, mods, prof, cName) {
+  const out = { action:[], bonus:[], reaction:[] };
+
+  // ── Always add base attack ──────────────────────
+  const attacks = level >= 11 ? 3 : level >= 5 ? 2 : 1;
+  const atkB = Math.max(mods.str, mods.dex) + prof;
+  const atkD = level >= 5 ? `1d8+${atkB}` : `1d6+${atkB}`;
+  out.action.push({
     id:'__attack', name:'Atacar',
-    desc:`${level >= 5 ? '2 ataques' : '1 ataque'} · +${atkBonus} al impacto · ${atkDmg} contundente`,
-    pc:0, once:false
+    desc:`${attacks} ${attacks>1?'ataques':'ataque'} · +${atkB} al impacto · ${atkD}`,
+    pc:0, once:false, source:'class'
   });
 
-  const SKIP = /^(descripci|descripcion|características|atributos basicos|equipo|idiomas|tamaño|velocidad|edad|casualidad|hogar|como personaje|convertirse)/i;
+  const seen = new Set(['__attack']);
+  entries.forEach((e, idx) => {
+    if (SKIP_NAMES.test(e.name)) return;
+    if (e.text.length < 30) return;
 
-  feats.forEach((f, idx) => {
-    const id = `f${idx}`;
-    const tl = f.text.toLowerCase();
-    const nl = f.name.toLowerCase();
+    const type = detectAction(e.name, e.text);
+    if (!type) return;
 
-    // Skip flavor/header entries
-    if (SKIP.test(f.name)) return;
-    if (f.text.length < 40 && !tl.includes('acción') && !tl.includes('reacción')) return;
+    // Deduplicate by name
+    const key = e.name.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
 
-    // Classify by action type
-    let type = null;
-    if (tl.includes('como reacción') || (tl.includes('reacción') && tl.includes('puedes llevar a cabo una reacción'))) {
-      type = 'reaction';
-    } else if ((tl.includes('acción adicional') && tl.includes('puedes')) ||
-               tl.includes('como acción adicional') ||
-               tl.includes('parte de la acción adicional')) {
-      type = 'bonus';
-    } else if ((tl.includes('como acción') && !tl.includes('acción adicional')) ||
-               tl.includes('puedes llevar a cabo la acción de atacar')) {
-      type = 'action';
-    }
+    const pc    = detectPCCost(e.text);
+    const once  = /once (?:on each|per) turn|una vez por turno/i.test(e.text);
+    const desc  = shortDesc(e.text);
 
-    if (!type) return; // passive — skip in main tracker
-
-    // PC cost
-    const pcMatch = tl.match(/gastar\s+(\d+)\s+punto/);
-    const pc = pcMatch ? parseInt(pcMatch[1]) : 0;
-
-    // Once per turn
-    const once = tl.includes('vez por turno');
-
-    // Short description
-    const firstLine = f.text.replace(/\n/g, ' ').replace(/\s+/g, ' ');
-    const sentEnd = firstLine.search(/[.!?]/);
-    const desc = sentEnd > 0 && sentEnd < 120
-      ? firstLine.slice(0, sentEnd + 1)
-      : firstLine.slice(0, 100) + (firstLine.length > 100 ? '…' : '');
-
-    result[type].push({ id, name: f.name, desc, pc, once, source: f.source });
+    out[type].push({ id:`e${idx}`, name:e.name, desc, pc, once, source:e.source });
   });
 
-  return result;
+  return out;
 }
 
 // ═══════════════════════════════════════════════════
-// RENDER
+//  RENDER
 // ═══════════════════════════════════════════════════
 function render() {
   if (!char) return;
 
   document.getElementById('hdr-name').textContent = char.name;
-  document.getElementById('hdr-meta').textContent = `${char.cName} Nv.${char.cLvl} · ${char.raceName}`;
+  document.getElementById('hdr-meta').textContent =
+    `${char.cName} Nv.${char.cLvl} · ${char.raceName}`;
   document.getElementById('hdr-round').textContent = G.round;
 
-  const pcT = char.trackers.find(t => /concentraci/i.test(t.label));
-  const metT = char.trackers.find(t => /metabolismo/i.test(t.label));
-  const pcMax = pcT?.max ?? 0;
-  const pcCur = G.trackers[pcT?.id] ?? pcMax;
-  const metAvail = metT ? (G.trackers[metT.id] ?? metT.max) > 0 : false;
   const hp = G.hp ?? char.hpCur;
-
   let h = '';
 
-  // ── Vitals ──────────────────────────────────────
-  h += `<div class="vitals">
-    <div class="vital-half">
-      <div class="vital-label">Puntos de golpe</div>
-      <div class="hp-controls">
-        <button class="adj-btn" onclick="chHP(-1)">−</button>
-        <div class="hp-val">${hp}<span class="hp-max"> / ${char.hpMax}</span></div>
-        <button class="adj-btn" onclick="chHP(1)">+</button>
-      </div>
-    </div>
-    <div class="vital-half">
-      <div class="vital-label">Concentración (PC)</div>
-      <div class="pc-row">
-        <div class="pc-val">${pcCur}</div>
-        <div class="pc-max">/ ${pcMax}</div>
-        ${Array.from({length: pcMax}, (_,i) =>
-          `<div class="pc-dot ${i < pcCur ? 'on' : ''}" onclick="clickDot(${i})"></div>`
-        ).join('')}
-      </div>
+  // ── HP ──────────────────────────────────────────
+  h += `<div class="hp-row">
+    <span class="hp-label">Puntos de golpe</span>
+    <div class="hp-controls">
+      <button class="adj-btn" onclick="chHP(-1)">−</button>
+      <div class="hp-val">${hp}<span class="hp-max"> / ${char.hpMax}</span></div>
+      <button class="adj-btn" onclick="chHP(1)">+</button>
     </div>
   </div>`;
 
-  // ── Status badges ───────────────────────────────
-  h += `<div class="badges">`;
-  h += badge('⚡ Brazos', G.buffs.brazos, `toggleBuff('brazos')`);
-  h += badge('👁 Rostro', G.buffs.rostro, G.buffs.brazos ? `toggleBuff('rostro')` : '', !G.buffs.brazos);
-  if (metT) h += badge('✦ Metabolismo', metAvail, metAvail ? 'useMeta()' : '', !metAvail, !metAvail);
-  h += `</div>`;
+  // ── Trackers ─────────────────────────────────────
+  if (char.trackers.length > 0) {
+    h += `<div class="trackers-grid">`;
+    char.trackers.forEach(t => {
+      const cur = G.trackers[t.id] ?? t.max;
+      const reset = t.resetType === 1 ? 'DsC' : t.resetType === 2 ? 'DsL' : '';
+      h += `<div class="tcard">`;
+      h += `<div class="tcard-label">${t.label}</div>`;
 
-  // ── Controls ────────────────────────────────────
+      if (t.isDice && t.diceFmt) {
+        h += `<div class="tcard-dice">${t.diceFmt}</div>`;
+        if (t.max > 0) {
+          h += `<div class="tcard-num">
+            <button class="tnum-btn" onclick="chTracker('${t.id}',-1)">−</button>
+            <span class="tnum-val">${cur}</span>
+            <span class="tnum-max">/ ${t.max}</span>
+            <button class="tnum-btn" onclick="chTracker('${t.id}',1)">+</button>
+          </div>`;
+        }
+      } else if (t.max <= 8) {
+        h += `<div class="tcard-dots">`;
+        for (let i = 0; i < t.max; i++) {
+          h += `<div class="tdot ${i<cur?'on':''}" onclick="clickTDot('${t.id}',${i})"></div>`;
+        }
+        h += `</div>`;
+        h += `<div style="font-size:.78rem;color:var(--muted)">${cur} / ${t.max}</div>`;
+      } else {
+        h += `<div class="tcard-num">
+          <button class="tnum-btn" onclick="chTracker('${t.id}',-1)">−</button>
+          <span class="tnum-val">${cur}</span>
+          <span class="tnum-max">/ ${t.max}</span>
+          <button class="tnum-btn" onclick="chTracker('${t.id}',1)">+</button>
+        </div>`;
+      }
+
+      if (reset) h += `<div class="tcard-reset">${reset}</div>`;
+      h += `</div>`;
+    });
+    h += `</div>`;
+  }
+
+  // ── Controls ─────────────────────────────────────
   h += `<div class="ctrl-row">
     <button class="btn-ctrl accent" onclick="finTurn()">Fin de turno</button>
     <button class="btn-ctrl" onclick="shortRest()">Desc. corto</button>
     <button class="btn-ctrl danger" onclick="longRest()">Desc. largo</button>
   </div>`;
 
-  // ── Action sections ─────────────────────────────
-  const sections = [
+  // ── Action sections ───────────────────────────────
+  const secs = [
     { key:'action',   label:'Acción',           dot:'d-action',   flag:'actionUsed' },
     { key:'bonus',    label:'Acción adicional',  dot:'d-bonus',    flag:'bonusUsed' },
     { key:'reaction', label:'Reacción',          dot:'d-reaction', flag:'reactionUsed' },
   ];
 
-  sections.forEach(sec => {
+  secs.forEach(sec => {
     const abs = char.abilities[sec.key];
     if (!abs?.length) return;
     const slotUsed = G[sec.flag];
@@ -435,29 +477,40 @@ function render() {
 
     abs.forEach(ab => {
       const onceUsed = ab.once && G.oncePerTurn[ab.id];
-      const pcOk = pcCur >= ab.pc;
-      const disabled = slotUsed || onceUsed || !pcOk;
-      const cls = slotUsed ? 'used' : (!pcOk || onceUsed ? 'locked' : '');
-      const fn = disabled ? '' : `useAb('${ab.id}','${sec.flag}',${ab.pc},${ab.once})`;
+      // For PC cost: try to find matching tracker by checking any tracker with similar name
+      const pcTracker = char.trackers.find(t =>
+        /concentraci|psionic energy|puntos de/i.test(t.label));
+      const pcCur = pcTracker ? (G.trackers[pcTracker.id] ?? pcTracker.max) : 99;
+      const pcOk  = pcCur >= ab.pc;
+      const dis   = slotUsed || onceUsed || !pcOk;
+      const cls2  = slotUsed ? 'used' : (!pcOk || onceUsed ? 'locked' : '');
+      const fn    = dis ? '' : `useAb('${ab.id}','${sec.flag}',${ab.pc},${ab.once})`;
+      const srcLabel = ab.source === 'item' ? '📦 ítem' :
+                       ab.source === 'race' ? '🧬 raza' :
+                       ab.source === 'background' ? '🗺 trasfondo' : '';
 
-      h += `<button class="ab ${cls}" onclick="${fn}" ${disabled ? 'disabled' : ''}>
+      h += `<button class="ab ${cls2}" onclick="${fn}" ${dis?'disabled':''}>
         <div class="ab-main">
           <div class="ab-name">${ab.name}</div>
           <div class="ab-desc">${ab.desc}</div>
+          ${srcLabel ? `<div class="ab-src">${srcLabel}</div>` : ''}
         </div>
-        <div class="ab-badges">
-          <span class="cost ${ab.pc > 0 ? (pcOk ? 'c-pc' : 'c-locked') : 'c-free'}">${ab.pc > 0 ? ab.pc + ' PC' : 'gratis'}</span>
-          ${ab.once ? `<span class="cost ${onceUsed ? 'c-locked' : 'c-free'}">${onceUsed ? '✓ usada' : '1/turno'}</span>` : ''}
+        <div class="ab-costs">
+          <span class="cost ${ab.pc>0?(pcOk?'c-blue':'c-locked'):'c-free'}">
+            ${ab.pc>0 ? ab.pc+' PC' : 'gratis'}
+          </span>
+          ${ab.once ? `<span class="cost ${onceUsed?'c-locked':'c-amber'}">${onceUsed?'✓ usada':'1/turno'}</span>` : ''}
         </div>
       </button>`;
     });
-
     h += `</div>`;
   });
 
-  // ── Monk combos (shown for any Monk build) ──────
-  if (/monje/i.test(char.cName)) {
-    h += renderCombos(pcCur, G.buffs.brazos);
+  // ── Class-specific combos ─────────────────────────
+  if (/monje|monk/i.test(char.cName)) {
+    h += renderMonkCombos();
+  } else if (/fighter|guerrero|luchador/i.test(char.cName)) {
+    h += renderFighterCombos();
   }
 
   h += `<div class="div"></div>
@@ -468,33 +521,25 @@ function render() {
   document.getElementById('content').innerHTML = h;
 }
 
-function badge(label, isOn, fn, isDisabled = false, isSpent = false) {
-  let cls = isSpent ? 'b-dead' : (isOn ? 'b-on' : 'b-off');
-  return `<span class="badge ${cls}" onclick="${fn}">${label}</span>`;
-}
+// ── Monk combos ─────────────────────────────────────
+function renderMonkCombos() {
+  const pcT = char.trackers.find(t => /concentraci/i.test(t.label));
+  const pc  = pcT ? (G.trackers[pcT.id] ?? pcT.max) : 0;
+  const brazos = G.buffs.brazos;
 
-function renderCombos(pc, brazos) {
   const combos = [
-    {
-      name: '⚡ Apertura de combate',
-      steps: `Tirada de iniciativa → Metabolismo Asombroso: recuperar todos los PC + curar 1d8+${char.cLvl} PG\nAad: Brazos + Rostro (2 PC) → daño inmediato 2d8 a criaturas cercanas\nA: Atacar ×2 + Golpe Aturdidor (1 PC) → objetivo aturdido`,
-      pcMin: 3, fn: 'cApertura()'
-    },
-    {
-      name: `💥 Ráfaga máxima (${brazos ? 5 : 4} ataques)`,
-      steps: `A: Atacar ×2\nAad: Ráfaga de golpes${brazos ? ' ★ 3 ataques adicionales' : ' 2 ataques adicionales'} (1 PC)\nGolpe Aturdidor en cualquier golpe (1 PC)`,
-      pcMin: 2, fn: 'cRafaga()'
-    },
-    {
-      name: '🛡 Control + resistencia',
-      steps: `A: Atacar ×2 + Golpe Aturdidor (1 PC) → objetivo aturdido hasta tu siguiente turno\nAad: Defensa paciente ★ (1 PC) → esquivar + 2d8 PG temporales`,
-      pcMin: 2, fn: 'cControl()'
-    },
-    {
-      name: '💨 Reposicionamiento',
-      steps: `Aad: Paso del viento ★ (1 PC) → correr + destrabarse + salto ×2\nA: Atacar ×2 desde nueva posición\nMovimiento total: ${30 + (char.cLvl >= 10 ? 20 : char.cLvl >= 6 ? 15 : 10)} + carrera ft`,
-      pcMin: 1, fn: 'cMov()'
-    }
+    { name:'⚡ Apertura de combate',
+      steps:'Tirada de iniciativa → Metabolismo Asombroso: recuperar todos los PC\nAad: Brazos + Rostro (2 PC) → daño 2d8 inmediato\nA: Atacar ×2 + Golpe Aturdidor (1 PC)',
+      pcMin:3, fn:'cMonkApertura()' },
+    { name:`💥 Ráfaga máxima (${brazos?5:4} ataques)`,
+      steps:`A: Atacar ×2\nAad: Ráfaga de golpes${brazos?' ★ 3 extra':' 2 extra'} (1 PC)\nGolpe Aturdidor (1 PC)`,
+      pcMin:2, fn:'cMonkRafaga()' },
+    { name:'🛡 Control + resistencia',
+      steps:'A: Atacar ×2 + Golpe Aturdidor (1 PC) → aturdido\nAad: Defensa paciente ★ (1 PC) → esquivar + 2d8 PG temp',
+      pcMin:2, fn:'cMonkControl()' },
+    { name:'💨 Reposicionamiento',
+      steps:'Aad: Paso del viento ★ (1 PC)\nA: Atacar ×2 desde nueva posición',
+      pcMin:1, fn:'cMonkMov()' }
   ];
 
   let h = `<div class="section"><div class="sec-head">
@@ -504,56 +549,80 @@ function renderCombos(pc, brazos) {
 
   combos.forEach(c => {
     const ok = pc >= c.pcMin && !G.actionUsed && !G.bonusUsed;
-    h += `<div class="combo ${ok ? '' : 'locked'}" onclick="${ok ? c.fn : ''}">
+    h += `<div class="combo ${ok?'':'locked'}" onclick="${ok?c.fn:''}">
       <div class="combo-name">${c.name}</div>
       <div class="combo-steps">${c.steps.replace(/\n/g,'<br>')}</div>
     </div>`;
   });
+  return h + `</div>`;
+}
 
+// ── Fighter combos ───────────────────────────────────
+function renderFighterCombos() {
+  const asT  = char.trackers.find(t => /action surge/i.test(t.label));
+  const asOk = asT ? (G.trackers[asT.id] ?? asT.max) > 0 : false;
+  const swT  = char.trackers.find(t => /second wind/i.test(t.label));
+  const swOk = swT ? (G.trackers[swT.id] ?? swT.max) > 0 : false;
+  const attacks = char.cLvl >= 11 ? 3 : char.cLvl >= 5 ? 2 : 1;
+
+  const combos = [
+    { name:`⚡ Avalancha (${attacks + attacks} ataques)`,
+      steps:`A: Atacar ×${attacks}\nAction Surge → A extra: Atacar ×${attacks} de nuevo`,
+      ok: asOk && !G.actionUsed, fn:'cFighterSurge()' },
+    { name:'🛡 Recuperar y resistir',
+      steps:'Aad: Second Wind → recuperar 1d10 + nivel PG\n(úsalo cuando estés bajo de vida)',
+      ok: swOk && !G.bonusUsed, fn:'cFighterWind()' },
+    { name:'🎯 Ataque + maniobra',
+      steps:`A: Atacar ×${attacks} con dado de superioridad en un golpe\nAad: Second Wind si necesitas curación`,
+      ok: !G.actionUsed, fn:'cFighterManeuver()' }
+  ];
+
+  let h = `<div class="section"><div class="sec-head">
+    <div class="sec-dot d-combo"></div>
+    <span class="sec-name">Combos sugeridos</span>
+  </div>`;
+
+  combos.forEach(c => {
+    h += `<div class="combo ${c.ok?'':'locked'}" onclick="${c.ok?c.fn:''}">
+      <div class="combo-name">${c.name}</div>
+      <div class="combo-steps">${c.steps.replace(/\n/g,'<br>')}</div>
+    </div>`;
+  });
   return h + `</div>`;
 }
 
 // ═══════════════════════════════════════════════════
-// ACTIONS
+//  ACTIONS
 // ═══════════════════════════════════════════════════
 function useAb(id, flag, pc, once) {
   G[flag] = true;
-  if (pc > 0) spendPC(pc);
-  if (once)   G.oncePerTurn[id] = true;
+  if (pc > 0) spendResource(pc);
+  if (once) G.oncePerTurn[id] = true;
   save(); render();
 }
 
-function spendPC(n) {
-  const t = char.trackers.find(t => /concentraci/i.test(t.label));
+function spendResource(n) {
+  const t = char.trackers.find(t => /concentraci|psionic energy/i.test(t.label));
   if (!t) return;
   G.trackers[t.id] = Math.max(0, (G.trackers[t.id] ?? t.max) - n);
 }
 
-function clickDot(i) {
-  const t = char.trackers.find(t => /concentraci/i.test(t.label));
+function chTracker(id, delta) {
+  const t = char.trackers.find(t => t.id === id);
   if (!t) return;
-  const cur = G.trackers[t.id] ?? t.max;
-  // tap last filled dot → remove 1; tap empty dot → fill to i+1
-  G.trackers[t.id] = (i === cur - 1) ? cur - 1 : Math.min(t.max, i + 1);
+  G.trackers[id] = Math.max(0, Math.min(t.max, (G.trackers[id] ?? t.max) + delta));
   save(); render();
 }
 
-function toggleBuff(key) {
-  if (key === 'rostro' && !G.buffs.brazos) return;
-  G.buffs[key] = !G.buffs[key];
-  if (key === 'brazos' && !G.buffs.brazos) G.buffs.rostro = false;
+function clickTDot(id, i) {
+  const t = char.trackers.find(t => t.id === id);
+  if (!t) return;
+  const cur = G.trackers[id] ?? t.max;
+  G.trackers[id] = (i === cur - 1) ? cur - 1 : Math.min(t.max, i + 1);
   save(); render();
 }
 
-function useMeta() {
-  const met = char.trackers.find(t => /metabolismo/i.test(t.label));
-  if (!met || (G.trackers[met.id] ?? met.max) === 0) return;
-  G.trackers[met.id] = 0;
-  const pc = char.trackers.find(t => /concentraci/i.test(t.label));
-  if (pc) G.trackers[pc.id] = pc.max;
-  toast('Metabolismo Asombroso: todos los PC recuperados');
-  save(); render();
-}
+function toggleBuff(k) { G.buffs[k] = !G.buffs[k]; save(); render(); }
 
 function chHP(d) {
   G.hp = Math.min(char.hpMax, Math.max(0, (G.hp ?? char.hpCur) + d));
@@ -574,78 +643,75 @@ function finTurn() {
 
 function shortRest() {
   char.trackers.forEach(t => { if (t.resetType === 1) G.trackers[t.id] = t.max; });
-  finTurn();
-  toast('Descanso corto — recursos recuperados');
+  finTurn(); toast('Descanso corto — recursos recuperados');
 }
 
 function longRest() {
   char.trackers.forEach(t => { G.trackers[t.id] = t.max; });
-  G.hp    = char.hpMax;
-  G.buffs = {};
-  G.round = 1;
-  finTurn();
-  toast('Descanso largo — todo recuperado');
+  G.hp = char.hpMax; G.buffs = {}; G.round = 1;
+  finTurn(); toast('Descanso largo — todo recuperado');
 }
 
-// Combos
-function cApertura() {
-  useMeta();
-  const pc = char.trackers.find(t => /concentraci/i.test(t.label));
-  if (pc && (G.trackers[pc.id] ?? pc.max) >= 3) {
-    spendPC(2); G.buffs.brazos = G.buffs.rostro = true; G.bonusUsed = true;
-    spendPC(1); G.actionUsed = true;
-  }
+// Monk combos
+function cMonkApertura() {
+  const met = char.trackers.find(t => /metabolismo/i.test(t.label));
+  if (met) G.trackers[met.id] = 0;
+  spendResource(3); G.buffs.brazos = G.buffs.rostro = true;
+  G.bonusUsed = G.actionUsed = true;
   save(); render();
 }
-function cRafaga()  { if (!G.actionUsed && !G.bonusUsed) { spendPC(2); G.actionUsed = G.bonusUsed = true; } save(); render(); }
-function cControl() { if (!G.actionUsed && !G.bonusUsed) { spendPC(2); G.actionUsed = G.bonusUsed = true; } save(); render(); }
-function cMov()     { if (!G.actionUsed && !G.bonusUsed) { spendPC(1); G.actionUsed = G.bonusUsed = true; } save(); render(); }
+function cMonkRafaga()  { if (!G.actionUsed && !G.bonusUsed) { spendResource(2); G.actionUsed = G.bonusUsed = true; } save(); render(); }
+function cMonkControl() { if (!G.actionUsed && !G.bonusUsed) { spendResource(2); G.actionUsed = G.bonusUsed = true; } save(); render(); }
+function cMonkMov()     { if (!G.actionUsed && !G.bonusUsed) { spendResource(1); G.actionUsed = G.bonusUsed = true; } save(); render(); }
+
+// Fighter combos
+function cFighterSurge() {
+  const asT = char.trackers.find(t => /action surge/i.test(t.label));
+  if (asT) G.trackers[asT.id] = Math.max(0, (G.trackers[asT.id] ?? asT.max) - 1);
+  G.actionUsed = true;
+  save(); render();
+}
+function cFighterWind() {
+  const swT = char.trackers.find(t => /second wind/i.test(t.label));
+  if (swT) G.trackers[swT.id] = Math.max(0, (G.trackers[swT.id] ?? swT.max) - 1);
+  G.bonusUsed = true;
+  save(); render();
+}
+function cFighterManeuver() { G.actionUsed = true; save(); render(); }
 
 // ═══════════════════════════════════════════════════
-// PERSISTENCE
+//  PERSISTENCE
 // ═══════════════════════════════════════════════════
 function save() {
-  try {
-    localStorage.setItem('g', JSON.stringify(G));
-    if (char) localStorage.setItem('ch', JSON.stringify(char));
-  } catch(e) {}
+  try { localStorage.setItem('g', JSON.stringify(G));
+    if (char) localStorage.setItem('ch', JSON.stringify(char)); } catch(e) {}
 }
 
 function loadSaved() {
   try {
-    const ch = localStorage.getItem('ch');
-    const g  = localStorage.getItem('g');
+    const ch = localStorage.getItem('ch'), g = localStorage.getItem('g');
     if (ch) { char = JSON.parse(ch); if (g) Object.assign(G, JSON.parse(g)); return true; }
   } catch(e) {}
   return false;
 }
 
 // ═══════════════════════════════════════════════════
-// XML IMPORT
+//  IMPORT
 // ═══════════════════════════════════════════════════
 function importXML(xmlText) {
   try {
-    const newChar = parseFC5eXML(xmlText);
-    char = newChar;
-    // Reset combat state but keep HP
+    char = parseFC5eXML(xmlText);
     G = { round:1, hp:char.hpCur, actionUsed:false, bonusUsed:false,
           reactionUsed:false, oncePerTurn:{}, trackers:{}, buffs:{} };
     char.trackers.forEach(t => { G.trackers[t.id] = t.max; });
     save();
-    showTracker();
-    toast(`${char.name} cargado correctamente`);
-  } catch(e) {
-    alert('Error al leer el XML: ' + e.message);
-  }
+    document.getElementById('screen-import').style.display  = 'none';
+    document.getElementById('screen-tracker').style.display = 'flex';
+    render();
+    toast(`${char.name} cargado`);
+  } catch(e) { alert('Error al leer el XML: ' + e.message); }
 }
 
-function showTracker() {
-  document.getElementById('screen-import').style.display  = 'none';
-  document.getElementById('screen-tracker').style.display = 'flex';
-  render();
-}
-
-// File picker
 document.getElementById('file-input').addEventListener('change', e => {
   const f = e.target.files[0]; if (!f) return;
   const r = new FileReader();
@@ -655,47 +721,41 @@ document.getElementById('file-input').addEventListener('change', e => {
 });
 
 // ═══════════════════════════════════════════════════
-// SHARE TARGET (Android PWA)
+//  SHARE TARGET
 // ═══════════════════════════════════════════════════
 async function checkShareTarget() {
   if (!location.search.includes('from-share')) return false;
   history.replaceState({}, '', location.pathname);
   try {
-    const cache    = await caches.open('share-v1');
-    const response = await cache.match('pending');
-    if (response) {
-      const text = await response.text();
-      await cache.delete('pending');
-      importXML(text);
-      return true;
-    }
+    const cache = await caches.open('share-v1');
+    const res   = await cache.match('pending');
+    if (res) { const tx = await res.text(); await cache.delete('pending'); importXML(tx); return true; }
   } catch(e) {}
   return false;
 }
 
 // ═══════════════════════════════════════════════════
-// TOAST
+//  TOAST
 // ═══════════════════════════════════════════════════
-let toastTimer;
+let toastT;
 function toast(msg) {
   const el = document.getElementById('toast');
-  el.textContent = msg;
-  el.classList.add('show');
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove('show'), 2400);
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('show'), 2400);
 }
 
 // ═══════════════════════════════════════════════════
-// INIT
+//  INIT
 // ═══════════════════════════════════════════════════
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./sw.js').catch(() => {});
-}
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(()=>{});
 
 (async function init() {
-  if (loadSaved()) { showTracker(); return; }
-  const handled = await checkShareTarget();
-  if (!handled) document.getElementById('screen-import').style.display = 'flex';
+  if (loadSaved()) {
+    document.getElementById('screen-tracker').style.display = 'flex';
+    render(); return;
+  }
+  if (await checkShareTarget()) return;
+  document.getElementById('screen-import').style.display = 'flex';
 })();
 </script>
 </body>
