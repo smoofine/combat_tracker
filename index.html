@@ -201,8 +201,11 @@ let G = { round:1, hp:null, actionUsed:false, bonusUsed:false,
 //  XML PARSER
 // ═══════════════════════════════════════════════════
 function parseFC5eXML(xml) {
+  // Strip BOM and any leading whitespace/garbage before <?xml or <character
+  xml = xml.replace(/^\uFEFF/, '').trim();
   const doc = new DOMParser().parseFromString(xml, 'text/xml');
-  if (doc.querySelector('parsererror')) throw new Error('XML malformado');
+  const perr = doc.querySelector('parsererror');
+  if (perr) throw new Error('XML malformado — ' + perr.textContent.slice(0,150));
 
   const ch = doc.querySelector('character');
   if (!ch) throw new Error('No se encontró elemento character');
@@ -705,6 +708,7 @@ document.getElementById('file-input').addEventListener('change', e => {
   const f = e.target.files[0]; if (!f) return;
   const r = new FileReader();
   r.onload = ev => importXML(ev.target.result);
+  r.onerror = () => alert('No se pudo leer el archivo');
   r.readAsText(f, 'UTF-8');
   e.target.value = '';
 });
