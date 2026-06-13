@@ -6,6 +6,7 @@
 <title>Combat Tracker — D&D 5e</title>
 <link rel="manifest" href="./manifest.json">
 <meta name="theme-color" content="#12121e">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Combat Tracker">
@@ -45,9 +46,13 @@ html,body{height:100%;background:var(--bg);color:var(--text);
 .header{background:var(--s1);border-bottom:1px solid var(--border);
   padding:10px 14px;display:flex;align-items:center;gap:8px;
   position:sticky;top:0;z-index:20}
+.hdr-change{background:var(--s2);border:1px solid var(--border2);color:var(--muted);
+  width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:1rem;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center}
+.hdr-change:active{opacity:.6}
 .hdr-info{flex:1;min-width:0}
 .hdr-name{font-weight:700;font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.hdr-meta{font-size:.73rem;color:var(--muted);margin-top:1px}
+.hdr-meta{font-size:.73rem;color:var(--muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .round-ctrl{display:flex;align-items:center;gap:4px;flex-shrink:0}
 .round-btn{background:var(--s2);border:1px solid var(--border2);color:var(--muted);
   width:24px;height:24px;border-radius:50%;cursor:pointer;font-size:1rem;
@@ -71,13 +76,12 @@ html,body{height:100%;background:var(--bg);color:var(--text);
 .adj-btn:active{opacity:.6}
 .hp-val{font-size:1.15rem;font-weight:700;min-width:72px;text-align:center}
 .hp-max{font-size:.78rem;color:var(--muted);font-weight:400}
-.hp-temp{font-size:.75rem;color:var(--amber);margin-left:2px}
 
 /* Tracker cards */
 .trackers-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:6px;margin-bottom:10px}
-.tcard{background:var(--s1);border:1px solid var(--border);border-radius:var(--r-sm);padding:9px 10px}
+.tcard{background:var(--s1);border:1px solid var(--border);border-radius:var(--r-sm);padding:9px 10px;position:relative}
 .tcard-label{font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  padding-right:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tcard-dots{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:4px}
 .tdot{width:16px;height:16px;border-radius:50%;cursor:pointer;flex-shrink:0;
   border:1.5px solid var(--hint);background:transparent;transition:background .1s,border-color .1s}
@@ -92,6 +96,10 @@ html,body{height:100%;background:var(--bg);color:var(--text);
 .tnum-btn:active{opacity:.6}
 .tcard-dice{font-size:.95rem;font-weight:600;color:var(--amber);letter-spacing:.02em;margin-bottom:3px}
 .tcard-reset{font-size:.68rem;color:var(--hint)}
+.x-btn{position:absolute;top:6px;right:6px;width:16px;height:16px;border-radius:50%;
+  background:var(--s3);border:none;color:var(--hint);font-size:.62rem;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;line-height:1;padding:0}
+.x-btn:active{opacity:.5}
 
 /* Controls */
 .ctrl-row{display:flex;gap:5px;margin-bottom:12px}
@@ -112,15 +120,16 @@ html,body{height:100%;background:var(--bg);color:var(--text);
 
 /* Ability button */
 .ab{width:100%;text-align:left;background:var(--s1);border:1px solid var(--border);
-  border-radius:var(--r-sm);padding:9px 11px;margin-bottom:4px;cursor:pointer;
-  color:var(--text);font-family:inherit;font-size:.88rem;
+  border-radius:var(--r-sm);padding:9px 11px 9px 11px;margin-bottom:4px;cursor:pointer;
+  color:var(--text);font-family:inherit;font-size:.88rem;position:relative;
   display:flex;align-items:flex-start;gap:9px;transition:opacity .12s}
 .ab:active{opacity:.65}
 .ab.used{opacity:.35;cursor:default;text-decoration:line-through;text-decoration-color:var(--hint)}
 .ab.locked{opacity:.3;cursor:not-allowed}
-.ab-main{flex:1;min-width:0}
+.ab-main{flex:1;min-width:0;padding-right:14px}
 .ab-name{font-weight:600;margin-bottom:1px}
 .ab-desc{font-size:.76rem;color:var(--muted);line-height:1.45}
+.ab-more{font-size:.7rem;color:var(--blue);margin-top:3px;display:inline-block;cursor:pointer}
 .ab-src{font-size:.66rem;color:var(--hint);margin-top:2px}
 .ab-costs{display:flex;gap:4px;flex-direction:column;align-items:flex-end;flex-shrink:0;padding-top:1px}
 .cost{font-size:.7rem;padding:2px 7px;border-radius:10px;white-space:nowrap;font-weight:500}
@@ -139,13 +148,14 @@ html,body{height:100%;background:var(--bg);color:var(--text);
 
 .div{height:1px;background:var(--border);margin:10px 0}
 .footer-btn{background:var(--s2);border:1px solid var(--border);color:var(--muted);
-  padding:9px;border-radius:var(--r-sm);font-size:.78rem;cursor:pointer;width:100%;text-align:center;margin-top:14px}
+  padding:9px;border-radius:var(--r-sm);font-size:.78rem;cursor:pointer;width:100%;text-align:center;margin-top:8px}
 .footer-btn:active{opacity:.6}
 
 #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);
   background:var(--s3);border:1px solid var(--border2);color:var(--text);
   padding:9px 18px;border-radius:20px;font-size:.83rem;
-  opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;z-index:100;white-space:nowrap}
+  opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;z-index:100;white-space:nowrap;max-width:88vw;
+  overflow:hidden;text-overflow:ellipsis}
 #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 </style>
 </head>
@@ -168,6 +178,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);
 
 <div id="screen-tracker">
   <div class="header">
+    <button class="hdr-change" onclick="document.getElementById('file-input').click()" title="Cambiar personaje">⇄</button>
     <div class="hdr-info">
       <div class="hdr-name" id="hdr-name">—</div>
       <div class="hdr-meta" id="hdr-meta">—</div>
@@ -189,17 +200,30 @@ html,body{height:100%;background:var(--bg);color:var(--text);
 // ═══════════════════════════════════════════════════
 const $  = (el, sel) => el?.querySelector(sel)?.textContent?.trim() ?? '';
 const $$ = (el, sel) => [...(el?.querySelectorAll(sel) ?? [])];
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
 
 // ═══════════════════════════════════════════════════
 //  STATE
 // ═══════════════════════════════════════════════════
 let char = null;
 let G = { round:1, hp:null, actionUsed:false, bonusUsed:false,
-  reactionUsed:false, oncePerTurn:{}, trackers:{}, buffs:{} };
+  reactionUsed:false, oncePerTurn:{}, trackers:{}, buffs:{},
+  hidden:{ abilities:{}, trackers:{} } };
+
+// Maps populated on each render(), used by toggleDesc()
+let SHORT_DESC = {};
+let FULL_DESC  = {};
 
 // ═══════════════════════════════════════════════════
 //  XML PARSER
 // ═══════════════════════════════════════════════════
+const WEAPON_TYPES = new Set([5, 6]); // 5 = melee weapon, 6 = ranged weapon
+const FINESSE_BIT  = 2;
+
 function parseFC5eXML(xml) {
   // Strip BOM and any leading whitespace/garbage before <?xml or <character
   xml = xml.replace(/^\uFEFF/, '').trim();
@@ -219,96 +243,134 @@ function parseFC5eXML(xml) {
   const m = s => Math.floor((s - 10) / 2);
   const mods = { str:m(str), dex:m(dex), con:m(con), int:m(int_), wis:m(wis), cha:m(cha) };
 
-  const cls    = ch.querySelector('class');
-  const cName  = $(cls, 'name');
-  const cLvl   = parseInt($(cls, 'level')) || 1;
-  const prof   = Math.ceil(cLvl / 4) + 1;
+  // ── Classes (multiclass support) ───────────────────
+  const classEls  = $$(ch, 'class');
+  const classInfo = classEls.map(c => ({
+    el:    c,
+    name:  $(c, 'name'),
+    level: parseInt($(c, 'level')) || 1
+  }));
+  const totalLevel = classInfo.reduce((s,c) => s + c.level, 0) || 1;
+  const cName = classInfo.map(c => `${c.name} ${c.level}`).join(' / ');
+  const prof  = Math.ceil(totalLevel / 4) + 1;
   const raceName = $(ch.querySelector('race'), 'name');
 
-  // ── Trackers ──────────────────────────────────────
-  // 1. Collect direct <tracker> children of <class>
-  const baseTrackers = {};
-  [...cls.children].forEach(c => {
-    if (c.tagName.toLowerCase() !== 'tracker') return;
-    const label = $(c, 'label');
-    if (!label) return;
-    baseTrackers[label] = {
-      label,
-      type:      parseInt($(c, 'type'))      || 1,
-      resetType: parseInt($(c, 'resetType')) || 0,
-      value:     parseInt($(c, 'value'))     || 0,
-      formula:   $(c, 'formula')
-    };
-  });
-
-  // 2. Scan <autolevel> ≤ cLvl to get correct max values
-  const levelUp = {};
-  $$(cls, 'autolevel').forEach(al => {
-    const alLvl = parseInt($(al, 'level')) || 1;
-    if (alLvl > cLvl) return;
-    $$(al, 'tracker').forEach(t => {
-      const label = $(t, 'label');
+  // ── Trackers (per class, merged) ───────────────────
+  let trackers = [];
+  classInfo.forEach((ci, classIdx) => {
+    const cls = ci.el;
+    const baseTrackers = {};
+    [...cls.children].forEach(c => {
+      if (c.tagName.toLowerCase() !== 'tracker') return;
+      const label = $(c, 'label');
       if (!label) return;
-      if (!levelUp[label] || alLvl >= (levelUp[label]._lvl || 0)) {
-        levelUp[label] = {
-          _lvl:      alLvl,
-          type:      parseInt($(t, 'type'))      || 1,
-          resetType: parseInt($(t, 'resetType')) || 0,
-          value:     parseInt($(t, 'value'))     || 0,
-          formula:   $(t, 'formula')
-        };
+      baseTrackers[label] = {
+        label,
+        type:      parseInt($(c, 'type'))      || 1,
+        resetType: parseInt($(c, 'resetType')) || 0,
+        value:     parseInt($(c, 'value'))     || 0,
+        formula:   $(c, 'formula')
+      };
+    });
+
+    const levelUp = {};
+    $$(cls, 'autolevel').forEach(al => {
+      const alLvl = parseInt($(al, 'level')) || 1;
+      if (alLvl > ci.level) return;
+      $$(al, 'tracker').forEach(t => {
+        const label = $(t, 'label');
+        if (!label) return;
+        if (!levelUp[label] || alLvl >= (levelUp[label]._lvl || 0)) {
+          levelUp[label] = {
+            _lvl:      alLvl,
+            type:      parseInt($(t, 'type'))      || 1,
+            resetType: parseInt($(t, 'resetType')) || 0,
+            value:     parseInt($(t, 'value'))     || 0,
+            formula:   $(t, 'formula')
+          };
+        }
+      });
+    });
+
+    Object.keys(levelUp).forEach(label => {
+      const lu = levelUp[label];
+      if (!baseTrackers[label]) { baseTrackers[label] = { label, ...lu }; return; }
+      const bt = baseTrackers[label];
+      if (lu.formula) bt.formula = lu.formula;
+      if (lu.value  > 0) bt.value = lu.value;
+      if (lu.type)       bt.type  = lu.type;
+      if (lu.resetType > 0) bt.resetType = lu.resetType;
+    });
+
+    Object.values(baseTrackers).forEach((t, i) => {
+      t.id = `t${classIdx}_${i}`;
+      t.classIdx = classIdx;
+      const n = parseInt(t.formula);
+      const isPureNum = !isNaN(n) && String(n) === t.formula.trim();
+
+      if (t.type === 2 && t.formula.includes('d')) {
+        t.isDice  = true;
+        t.diceFmt = t.formula;
+        const likelyCount = t.value > 0 && ![4,6,8,10,12,20].includes(t.value);
+        t.max = likelyCount ? t.value : 0;
+      } else if (isPureNum) {
+        t.max = n;
+      } else {
+        t.max = t.value || 1;
       }
+      t.current = t.max;
+      if (t.resetType > 0 || (t.isDice && t.max > 0)) trackers.push(t);
     });
   });
 
-  // 3. Merge
-  Object.keys(levelUp).forEach(label => {
-    const lu = levelUp[label];
-    if (!baseTrackers[label]) { baseTrackers[label] = { label, ...lu }; return; }
-    const bt = baseTrackers[label];
-    if (lu.formula) bt.formula = lu.formula;
-    if (lu.value  > 0) bt.value = lu.value;
-    if (lu.type)       bt.type  = lu.type;
-    if (lu.resetType > 0) bt.resetType = lu.resetType;
+  // De-duplicate trackers with same label (keep the one with the larger max)
+  const trackerByLabel = {};
+  trackers.forEach(t => {
+    const key = t.label.toLowerCase();
+    if (!trackerByLabel[key] || t.max > trackerByLabel[key].max) trackerByLabel[key] = t;
   });
+  trackers = Object.values(trackerByLabel);
 
-  // 4. Compute max and filter relevant trackers
-  const trackers = Object.values(baseTrackers).map((t, i) => {
-    t.id = `t${i}`;
-    const n = parseInt(t.formula);
-    const isPureNum = !isNaN(n) && String(n) === t.formula.trim();
-
-    if (t.type === 2 && t.formula.includes('d')) {
-      t.isDice   = true;
-      t.diceFmt  = t.formula;
-      // If value is likely a count of dice (not a die face), use it
-      const likelyCount = t.value > 0 && ![4,6,8,10,12,20].includes(t.value);
-      t.max      = likelyCount ? t.value : 0;
-    } else if (isPureNum) {
-      t.max = n;
-    } else {
-      t.max = t.value || 1;
-    }
-    t.current = t.max;
-    return t;
-  }).filter(t => t.resetType > 0 || (t.isDice && t.max > 0));
-
-  // ── Feats + Items → Abilities ─────────────────────
+  // ── Feats (class × N, race, background) → ability candidates ──
   const allFeats = [];
-  ['class','race','background'].forEach(src => {
+  classInfo.forEach((ci, classIdx) => {
+    $$(ci.el, 'feat').forEach(f => {
+      const n = $(f,'name'), tx = $(f,'text');
+      if (n.length > 1) allFeats.push({ name:n, text:tx, source:'class', classIdx });
+    });
+  });
+  ['race','background'].forEach(src => {
     $$(ch.querySelector(src), 'feat').forEach(f => {
       const n = $(f,'name'), tx = $(f,'text');
       if (n.length > 1) allFeats.push({ name:n, text:tx, source:src });
     });
   });
 
-  const allItems = $$(ch, 'item').map(it => ({
-    name: $(it,'name'), text: $(it,'text'), source:'item'
-  })).filter(it => it.name && it.text);
+  // ── Items: non-weapon feats + weapon attacks ──────
+  const allItems = $$(ch, 'item');
+  const itemFeats = [];
+  const weapons   = [];
+  allItems.forEach(it => {
+    const itName = $(it,'name'), itText = $(it,'text');
+    const type   = parseInt($(it,'type'));
+    if (WEAPON_TYPES.has(type) && $(it,'damage1H')) {
+      weapons.push({
+        name: itName,
+        type,
+        damage1H: $(it,'damage1H'),
+        damage2H: $(it,'damage2H'),
+        weaponProperty: parseInt($(it,'weaponProperty')) || 0
+      });
+    } else if (itName && itText) {
+      itemFeats.push({ name:itName, text:itText, source:'item' });
+    }
+  });
 
-  const abilities = buildAbilities([...allFeats, ...allItems], cLvl, mods, prof, cName);
+  const abilities = buildAbilities(
+    [...allFeats, ...itemFeats], totalLevel, mods, prof, weapons
+  );
 
-  return { name, hpMax, hpCur, cName, cLvl, raceName, prof, mods, trackers, abilities };
+  return { name, hpMax, hpCur, cName, cLvl:totalLevel, classInfo, raceName, prof, mods, trackers, abilities };
 }
 
 // ── Classify a single ability text ──────────────────
@@ -323,7 +385,7 @@ function detectAction(name, text) {
   return null;
 }
 
-// ── PC cost detection ──────────────────────────────
+// ── PC / resource cost detection ────────────────────
 function detectPCCost(text) {
   const m = text.toLowerCase().match(/(?:gastar|gastando|expend)\s+(?:one|1|(\d+))\s+(?:punto|p\.c\.|psionic energy|superiority)/);
   if (!m) return 0;
@@ -333,28 +395,54 @@ function detectPCCost(text) {
 // ── Short description from full text ───────────────
 function shortDesc(text) {
   const clean = text.replace(/\n/g,' ').replace(/\s+/g,' ').trim();
-  // Try to get first sentence
-  const m = clean.match(/^.{20,120}?[.!?]/);
+  const m = clean.match(/^.{20,140}?[.!?]/);
   if (m) return m[0];
-  return clean.slice(0, 110) + (clean.length > 110 ? '…' : '');
+  return clean.slice(0, 130) + (clean.length > 130 ? '…' : '');
+}
+function fullDescClean(text) {
+  return text.replace(/\n{2,}/g,'\n').trim();
 }
 
-const SKIP_NAMES = /^(description|descripci[oó]n|characteristics|starting\s|multiclass|proficiency|equipment|languages|idiomas|age|size|speed|ability score improvement|style$|instructor$|well-rounded|trained for|creating a|heraldic|xanathar)/i;
+const SKIP_NAMES = /^(description|descripci[oó]n|characteristics|caracter[ií]sticas|starting\s|multiclass|proficiency|equipment|languages|idiomas|age|size|speed|ability score improvement|style$|instructor$|well-rounded|trained for|creating a|heraldic|xanathar)/i;
 
-function buildAbilities(entries, level, mods, prof, cName) {
+function buildAbilities(entries, level, mods, prof, weapons) {
   const out = { action:[], bonus:[], reaction:[] };
 
-  // ── Always add base attack ──────────────────────
   const attacks = level >= 11 ? 3 : level >= 5 ? 2 : 1;
-  const atkB = Math.max(mods.str, mods.dex) + prof;
-  const atkD = level >= 5 ? `1d8+${atkB}` : `1d6+${atkB}`;
+
+  // ── Base unarmed attack ──────────────────────────
+  const abMod   = Math.max(mods.str, mods.dex);
+  const unarmedB = abMod + prof;
+  const unarmedSign = abMod >= 0 ? '+' : '';
+  const unarmedD = level >= 5 ? `1d8${unarmedSign}${abMod}` : `1d4${unarmedSign}${abMod}`;
   out.action.push({
-    id:'__attack', name:'Atacar',
-    desc:`${attacks} ${attacks>1?'ataques':'ataque'} · +${atkB} al impacto · ${atkD}`,
-    pc:0, once:false, source:'class'
+    id:'__attack', name:'Atacar (sin armas)',
+    desc:`${attacks} ${attacks>1?'ataques':'ataque'} · +${unarmedB} al impacto · ${unarmedD}`,
+    full:null, pc:0, once:false, source:'class'
   });
 
-  const seen = new Set(['__attack']);
+  // ── Weapon attacks ────────────────────────────────
+  weapons.filter(w => !/unarmed|sin armas/i.test(w.name)).forEach((w, wi) => {
+    const finesse  = (w.weaponProperty & FINESSE_BIT) !== 0;
+    const isRanged = w.type === 6;
+    const abMod    = isRanged ? mods.dex : (finesse ? Math.max(mods.str, mods.dex) : mods.str);
+    const atkB     = abMod + prof;
+    const magicM   = w.name.match(/\+(\d)\b/);
+    const magicB   = magicM ? parseInt(magicM[1]) : 0;
+    const dmgB     = abMod + magicB;
+    const dmgSign  = dmgB >= 0 ? '+' : '';
+    let dmgStr = `${w.damage1H}${dmgSign}${dmgB}`;
+    if (w.damage2H) dmgStr += ` (2 manos: ${w.damage2H}${dmgSign}${dmgB})`;
+
+    out.action.push({
+      id:`w${wi}`, name:`Atacar con ${w.name}`,
+      desc:`${attacks} ${attacks>1?'ataques':'ataque'} · +${atkB} al impacto · ${dmgStr}`,
+      full:null, pc:0, once:false, source:'weapon'
+    });
+  });
+
+  // ── Feats / item abilities ────────────────────────
+  const seen = new Set();
   entries.forEach((e, idx) => {
     if (SKIP_NAMES.test(e.name)) return;
     if (e.text.length < 30) return;
@@ -362,7 +450,6 @@ function buildAbilities(entries, level, mods, prof, cName) {
     const type = detectAction(e.name, e.text);
     if (!type) return;
 
-    // Deduplicate by name
     const key = e.name.toLowerCase();
     if (seen.has(key)) return;
     seen.add(key);
@@ -370,8 +457,13 @@ function buildAbilities(entries, level, mods, prof, cName) {
     const pc    = detectPCCost(e.text);
     const once  = /once (?:on each|per) turn|una vez por turno/i.test(e.text);
     const desc  = shortDesc(e.text);
+    const full  = fullDescClean(e.text);
 
-    out[type].push({ id:`e${idx}`, name:e.name, desc, pc, once, source:e.source });
+    out[type].push({
+      id:`e${idx}`, name:e.name, desc,
+      full: (full !== desc ? full : null),
+      pc, once, source:e.source
+    });
   });
 
   return out;
@@ -382,10 +474,11 @@ function buildAbilities(entries, level, mods, prof, cName) {
 // ═══════════════════════════════════════════════════
 function render() {
   if (!char) return;
+  SHORT_DESC = {}; FULL_DESC = {};
 
   document.getElementById('hdr-name').textContent = char.name;
   document.getElementById('hdr-meta').textContent =
-    `${char.cName} Nv.${char.cLvl} · ${char.raceName}`;
+    `${char.cName} · ${char.raceName}`;
   document.getElementById('hdr-round').textContent = G.round;
 
   const hp = G.hp ?? char.hpCur;
@@ -402,16 +495,20 @@ function render() {
   </div>`;
 
   // ── Trackers ─────────────────────────────────────
-  if (char.trackers.length > 0) {
+  const visTrackers = char.trackers.filter(t => !G.hidden.trackers[t.id]);
+  const hiddenTCount = char.trackers.length - visTrackers.length;
+
+  if (visTrackers.length > 0) {
     h += `<div class="trackers-grid">`;
-    char.trackers.forEach(t => {
+    visTrackers.forEach(t => {
       const cur = G.trackers[t.id] ?? t.max;
       const reset = t.resetType === 1 ? 'DsC' : t.resetType === 2 ? 'DsL' : '';
       h += `<div class="tcard">`;
-      h += `<div class="tcard-label">${t.label}</div>`;
+      h += `<button class="x-btn" onclick="hideTracker('${t.id}')" title="Ocultar">✕</button>`;
+      h += `<div class="tcard-label">${esc(t.label)}</div>`;
 
       if (t.isDice && t.diceFmt) {
-        h += `<div class="tcard-dice">${t.diceFmt}</div>`;
+        h += `<div class="tcard-dice">${esc(t.diceFmt)}</div>`;
         if (t.max > 0) {
           h += `<div class="tcard-num">
             <button class="tnum-btn" onclick="chTracker('${t.id}',-1)">−</button>
@@ -456,9 +553,13 @@ function render() {
     { key:'reaction', label:'Reacción',          dot:'d-reaction', flag:'reactionUsed' },
   ];
 
+  let hiddenACount = 0;
+
   secs.forEach(sec => {
-    const abs = char.abilities[sec.key];
-    if (!abs?.length) return;
+    const all = char.abilities[sec.key] || [];
+    const abs = all.filter(a => !G.hidden.abilities[a.id]);
+    hiddenACount += all.length - abs.length;
+    if (!abs.length) return;
     const slotUsed = G[sec.flag];
 
     h += `<div class="section"><div class="sec-head">
@@ -469,22 +570,27 @@ function render() {
 
     abs.forEach(ab => {
       const onceUsed = ab.once && G.oncePerTurn[ab.id];
-      // For PC cost: try to find matching tracker by checking any tracker with similar name
       const pcTracker = char.trackers.find(t =>
-        /concentraci|psionic energy|puntos de/i.test(t.label));
+        /concentraci|psionic energy|puntos de|superiority/i.test(t.label));
       const pcCur = pcTracker ? (G.trackers[pcTracker.id] ?? pcTracker.max) : 99;
       const pcOk  = pcCur >= ab.pc;
       const dis   = slotUsed || onceUsed || !pcOk;
       const cls2  = slotUsed ? 'used' : (!pcOk || onceUsed ? 'locked' : '');
       const fn    = dis ? '' : `useAb('${ab.id}','${sec.flag}',${ab.pc},${ab.once})`;
-      const srcLabel = ab.source === 'item' ? '📦 ítem' :
-                       ab.source === 'race' ? '🧬 raza' :
+      const srcLabel = ab.source === 'item'   ? '📦 ítem' :
+                       ab.source === 'weapon' ? '🗡 arma' :
+                       ab.source === 'race'   ? '🧬 raza' :
                        ab.source === 'background' ? '🗺 trasfondo' : '';
 
-      h += `<button class="ab ${cls2}" onclick="${fn}" ${dis?'disabled':''}>
+      SHORT_DESC[ab.id] = ab.desc;
+      if (ab.full) FULL_DESC[ab.id] = ab.full;
+
+      h += `<div class="ab ${cls2}" onclick="${fn}">
+        <button class="x-btn" onclick="event.stopPropagation();hideAbility('${ab.id}')" title="Ocultar">✕</button>
         <div class="ab-main">
-          <div class="ab-name">${ab.name}</div>
-          <div class="ab-desc">${ab.desc}</div>
+          <div class="ab-name">${esc(ab.name)}</div>
+          <div class="ab-desc" id="desc-${ab.id}">${esc(ab.desc)}</div>
+          ${ab.full ? `<span class="ab-more" id="more-${ab.id}" onclick="event.stopPropagation();toggleDesc('${ab.id}')">ver más ▾</span>` : ''}
           ${srcLabel ? `<div class="ab-src">${srcLabel}</div>` : ''}
         </div>
         <div class="ab-costs">
@@ -493,24 +599,43 @@ function render() {
           </span>
           ${ab.once ? `<span class="cost ${onceUsed?'c-locked':'c-amber'}">${onceUsed?'✓ usada':'1/turno'}</span>` : ''}
         </div>
-      </button>`;
+      </div>`;
     });
     h += `</div>`;
   });
 
   // ── Class-specific combos ─────────────────────────
-  if (/monje|monk/i.test(char.cName)) {
+  const classNames = (char.classInfo || []).map(c => c.name).join(' ').toLowerCase();
+  if (/monje|monk/i.test(classNames)) {
     h += renderMonkCombos();
-  } else if (/fighter|guerrero|luchador/i.test(char.cName)) {
+  } else if (/fighter|guerrero|luchador/i.test(classNames)) {
     h += renderFighterCombos();
   }
 
-  h += `<div class="div"></div>
-  <button class="footer-btn" onclick="document.getElementById('file-input').click()">
-    Cambiar personaje
-  </button>`;
+  // ── Footer: restore hidden items ──────────────────
+  const totalHidden = hiddenACount + hiddenTCount;
+  if (totalHidden > 0) {
+    h += `<button class="footer-btn" onclick="unhideAll()">↺ Mostrar elementos ocultos (${totalHidden})</button>`;
+  }
 
   document.getElementById('content').innerHTML = h;
+}
+
+// ── Toggle full / short description ─────────────────
+function toggleDesc(id) {
+  const descEl = document.getElementById('desc-'+id);
+  const linkEl = document.getElementById('more-'+id);
+  if (!descEl || !linkEl) return;
+  const expanded = descEl.dataset.expanded === '1';
+  if (expanded) {
+    descEl.textContent = SHORT_DESC[id];
+    descEl.dataset.expanded = '0';
+    linkEl.textContent = 'ver más ▾';
+  } else {
+    descEl.textContent = FULL_DESC[id];
+    descEl.dataset.expanded = '1';
+    linkEl.textContent = 'ver menos ▴';
+  }
 }
 
 // ── Monk combos ─────────────────────────────────────
@@ -594,7 +719,7 @@ function useAb(id, flag, pc, once) {
 }
 
 function spendResource(n) {
-  const t = char.trackers.find(t => /concentraci|psionic energy/i.test(t.label));
+  const t = char.trackers.find(t => /concentraci|psionic energy|superiority/i.test(t.label));
   if (!t) return;
   G.trackers[t.id] = Math.max(0, (G.trackers[t.id] ?? t.max) - n);
 }
@@ -613,6 +738,11 @@ function clickTDot(id, i) {
   G.trackers[id] = (i === cur - 1) ? cur - 1 : Math.min(t.max, i + 1);
   save(); render();
 }
+
+// ── Hide / unhide ─────────────────────────────────────
+function hideAbility(id) { G.hidden.abilities[id] = true; save(); render(); }
+function hideTracker(id) { G.hidden.trackers[id] = true; save(); render(); }
+function unhideAll() { G.hidden = { abilities:{}, trackers:{} }; save(); render(); }
 
 function toggleBuff(k) { G.buffs[k] = !G.buffs[k]; save(); render(); }
 
@@ -682,7 +812,17 @@ function save() {
 function loadSaved() {
   try {
     const ch = localStorage.getItem('ch'), g = localStorage.getItem('g');
-    if (ch) { char = JSON.parse(ch); if (g) Object.assign(G, JSON.parse(g)); return true; }
+    if (ch) {
+      char = JSON.parse(ch);
+      if (g) {
+        const saved = JSON.parse(g);
+        Object.assign(G, saved);
+        if (!G.hidden) G.hidden = { abilities:{}, trackers:{} };
+        if (!G.hidden.abilities) G.hidden.abilities = {};
+        if (!G.hidden.trackers) G.hidden.trackers = {};
+      }
+      return true;
+    }
   } catch(e) {}
   return false;
 }
@@ -694,7 +834,8 @@ function importXML(xmlText) {
   try {
     char = parseFC5eXML(xmlText);
     G = { round:1, hp:char.hpCur, actionUsed:false, bonusUsed:false,
-          reactionUsed:false, oncePerTurn:{}, trackers:{}, buffs:{} };
+          reactionUsed:false, oncePerTurn:{}, trackers:{}, buffs:{},
+          hidden:{ abilities:{}, trackers:{} } };
     char.trackers.forEach(t => { G.trackers[t.id] = t.max; });
     save();
     document.getElementById('screen-import').style.display  = 'none';
