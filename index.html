@@ -107,7 +107,11 @@ html,body{height:100%;background:var(--bg);color:var(--text);
 .calc-temp{background:#3a6b9e}
 .calc-dmg{background:#8b2c2c}
 
-/* Tracker cards */
+/* Spell DC row */
+.dc-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.dc-badge{background:var(--s1);border:1px solid var(--border);border-radius:var(--r-sm);
+  padding:6px 12px;font-size:.78rem;color:var(--muted);display:flex;align-items:center;gap:6px}
+.dc-badge b{color:var(--amber);font-size:.95rem}
 .trackers-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:6px;margin-bottom:10px}
 .tcard{background:var(--s1);border:1px solid var(--border);border-radius:var(--r-sm);padding:9px 10px;position:relative}
 .tcard-label{font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px;
@@ -175,6 +179,29 @@ html,body{height:100%;background:var(--bg);color:var(--text);
 .combo.locked{border-left-color:var(--hint);opacity:.4;cursor:default}
 .combo-name{font-weight:600;font-size:.88rem;margin-bottom:3px}
 .combo-steps{font-size:.75rem;color:var(--muted);line-height:1.6}
+
+/* Suggestions (universal combo system) */
+.sugg-card{border-left:3px solid var(--blue-border);background:var(--s1);
+  border-radius:0 var(--r-sm) var(--r-sm) 0;padding:9px 11px;margin-bottom:5px;cursor:pointer}
+.sugg-card:active{opacity:.65}
+.sugg-cat{font-weight:600;font-size:.8rem;margin-bottom:5px;display:flex;align-items:center;gap:6px}
+.sugg-pick{display:flex;align-items:baseline;gap:6px;font-size:.82rem;margin-bottom:2px}
+.sugg-slot{font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+  color:var(--muted);min-width:38px;flex-shrink:0}
+.sugg-name{font-weight:500}
+.sugg-extra{font-size:.72rem;color:var(--muted)}
+.sugg-empty{font-size:.78rem;color:var(--hint);font-style:italic}
+
+/* Utility / out-of-combat section */
+.util-toggle{display:flex;align-items:center;gap:7px;cursor:pointer;
+  background:var(--s1);border:1px solid var(--border);border-radius:var(--r-sm);
+  padding:9px 11px;margin-bottom:8px;font-size:.82rem;color:var(--muted);font-weight:600}
+.util-toggle .chev{margin-left:auto;font-size:.7rem;transition:transform .15s}
+.util-toggle.open .chev{transform:rotate(90deg)}
+.ab.util .ab-costs{flex-direction:column}
+.usar-btn{background:var(--blue-bg);border:1px solid var(--blue-border);color:var(--blue);
+  border-radius:var(--r-sm);padding:4px 9px;font-size:.7rem;font-weight:600;cursor:pointer;margin-top:4px}
+.usar-btn:active{opacity:.6}
 
 .div{height:1px;background:var(--border);margin:10px 0}
 .footer-btn{background:var(--s2);border:1px solid var(--border);color:var(--muted);
@@ -267,7 +294,7 @@ function esc(s) {
 // ═══════════════════════════════════════════════════
 let char = null;
 let G = { round:1, hp:null, tempHp:0, actionUsed:false, bonusUsed:false,
-  reactionUsed:false, oncePerTurn:{}, trackers:{}, buffs:{},
+  reactionUsed:false, oncePerTurn:{}, trackers:{}, showUtility:false,
   hidden:{ abilities:{}, trackers:{} } };
 
 // Maps populated on each render(), used by toggleDesc()
@@ -283,6 +310,8 @@ let calcExpr = '';
 // ═══════════════════════════════════════════════════
 const WEAPON_TYPES = new Set([5, 6]); // 5 = melee weapon, 6 = ranged weapon
 const FINESSE_BIT  = 2;
+const ABILITY_KEYS = ['str','dex','con','int','wis','cha'];
+const ABILITY_ES   = ['FUE','DES','CON','INT','SAB','CAR'];
 
 function parseFC5eXML(xml) {
   // Strip BOM and any leading whitespace/garbage before <?xml or <character
@@ -357,6 +386,22 @@ function parseFC5eXML(xml) {
   });
   trackers = Object.values(trackerByLabel);
 
+  // ── Spell slot trackers (from top-level <slots>, levels 1-9) ──
+  // FC5e stores [idx0=?, lvl1, lvl2, ..., lvl9] — index 0 is not a slot level.
+  // IMPORTANT: <class> elements also contain their own <slots>, so we must
+  // only read the DIRECT child of <character>, not the first descendant match.
+  const topSlotsEl = [...ch.children].find(c => c.tagName.toLowerCase() === 'slots');
+  const slotsArr = (topSlotsEl?.textContent.trim() || '').replace(/,$/, '').split(',').map(n => parseInt(n) || 0);
+  for (let lvl = 1; lvl <= 9; lvl++) {
+    const max = slotsArr[lvl] || 0;
+    if (max > 0) {
+      trackers.push({
+        id:`sl${lvl}`, label:`Espacios Nv.${lvl}`, type:1, resetType:2,
+        max, current:max, isDice:false, diceFmt:null, isSpellSlot:true, spellLevel:lvl
+      });
+    }
+  }
+
   // ── Feats: direct <feat> children of <class> = curated/selected list ──
   // (autolevel dumps EVERY subclass option; direct children only contain
   //  what was actually chosen for this character)
@@ -379,13 +424,23 @@ function parseFC5eXML(xml) {
     });
   });
 
-  // ── Items: non-weapon feats + weapon attacks ──────
+  // ── Items: non-weapon feats + weapon attacks + global spell mods ──
   const allItems = $$(ch, 'item');
   const itemFeats = [];
   const weapons   = [];
+  let spellDcBonus = 0, spellAtkBonus = 0;
   allItems.forEach(it => {
     const itName = $(it,'name'), itText = $(it,'text');
     const type   = parseInt($(it,'type'));
+
+    // Global spellcasting modifiers (type 7 = Spell Save DC, type 8 = Spell Attack)
+    $$(it,'mod').forEach(md => {
+      const mt = parseInt($(md,'type')) || 0;
+      const mv = $(md,'value') !== '' ? parseInt($(md,'value')) : 0;
+      if (mt === 7) spellDcBonus  += mv;
+      if (mt === 8) spellAtkBonus += mv;
+    });
+
     if (WEAPON_TYPES.has(type) && $(it,'damage1H')) {
       weapons.push({
         name: itName,
@@ -403,11 +458,46 @@ function parseFC5eXML(xml) {
     }
   });
 
+  // ── Spells: direct <spell> children of each <class> ─────────────
+  const spellEntries = [];
+  const spellDC = {}; // abilityIdx -> { dc, atk }
+  classInfo.forEach((ci, classIdx) => {
+    const direct = [...ci.el.children].filter(c => c.tagName.toLowerCase() === 'spell');
+    if (!direct.length) return;
+
+    const saIdx = parseInt($(ci.el, 'spellAbility'));
+    let abilityIdx = (saIdx >= 0 && saIdx <= 5) ? saIdx : null;
+
+    if (abilityIdx !== null && !spellDC[abilityIdx]) {
+      const abMod = mods[ABILITY_KEYS[abilityIdx]];
+      spellDC[abilityIdx] = {
+        dc:  8 + prof + abMod + spellDcBonus,
+        atk: prof + abMod + spellAtkBonus
+      };
+    }
+
+    direct.forEach((s, i) => {
+      const sName = $(s,'name'), sText = $(s,'text');
+      if (!sName || !sText) return;
+      spellEntries.push({
+        id:`sp${classIdx}_${i}`,
+        name: sName.trim(),
+        text: sText,
+        level: parseInt($(s,'level')) || 0,
+        time: $(s,'time'),
+        range: $(s,'range'),
+        duration: $(s,'duration'),
+        ritual: $(s,'ritual') === '1',
+        abilityIdx
+      });
+    });
+  });
+
   const abilities = buildAbilities(
-    [...allFeats, ...itemFeats], totalLevel, mods, prof, weapons
+    [...allFeats, ...itemFeats], totalLevel, mods, prof, weapons, spellEntries, spellDC
   );
 
-  return { name, hpMax, hpCur, cName, cLvl:totalLevel, classInfo, raceName, prof, mods, trackers, abilities };
+  return { name, hpMax, hpCur, cName, cLvl:totalLevel, classInfo, raceName, prof, mods, trackers, abilities, spellDC };
 }
 
 // ── Classify a single ability text ──────────────────
@@ -420,6 +510,15 @@ function detectAction(name, text) {
   if (RE_BONUS.test(text))    return 'bonus';
   if (RE_ACTION.test(text))   return 'action';
   return null;
+}
+
+// ── Classify a spell by its <time> field ────────────
+function detectSpellTime(time) {
+  const tl = (time || '').toLowerCase();
+  if (/reacci|reaction/.test(tl)) return 'reaction';
+  if (/bonus action|acci[oó]n adicional/.test(tl)) return 'bonus';
+  if (/action|acci[oó]n/.test(tl)) return 'action';
+  return 'utility'; // rituals, "X minutes/hours" — outside the turn structure
 }
 
 // ── PC / resource cost detection ────────────────────
@@ -440,10 +539,58 @@ function fullDescClean(text) {
   return text.replace(/\n{2,}/g,'\n').trim();
 }
 
+// ═══════════════════════════════════════════════════
+//  UNIVERSAL ABILITY TAGGING
+//  Classifies any ability/spell by what it DOES, based on
+//  its description text (bilingual EN/ES). Powers the
+//  generic "Sugerencias" combo system below.
+// ═══════════════════════════════════════════════════
+const TAG_RULES = [
+  { tag:'heal',    re:/recuper(?:as?|aci[oó]n)\b|san(?:a|ar|as|aci[oó]n)\b|cura(?:s|ci[oó]n)?\b|regain.*hit points|hit points.*regain|heal(?:ing)?\b/i },
+  { tag:'defense', re:/resistencia a|resistance to|puntos de golpe temporal|temporary hit points|\bca\s*\+|armor class|esquivar|dodge|cobertura total|immunity|inmunidad/i },
+  { tag:'mobility',re:/velocidad de (?:vuelo|excavaci[oó]n|trepar|nataci[oó]n)|flying speed|teletransport|teleport|salto.*(?:pies|feet)|jump|no provoca? ataques? de oportunidad|without provoking opportunity/i },
+  { tag:'damage',  re:/\d+d\d+|puntos? de da[ñn]o|hit points of damage|damage\b/i },
+  { tag:'buff',    re:/ventaja en|advantage on|bonificador (?:a|de)|bonus to|gana[ns]? .* puntos de golpe m[aá]ximos|increases by/i },
+];
+
+// Condition keywords (used both for "control" — inflicting — and for
+// detecting "cure" abilities, which remove these same conditions).
+const RE_CONDITION = /aturdid|paraliz|asustad[oa]|incapacitad|derribad[oa]|apresad[oa]|ralentiz|hechizad[oa]|cegad[oa]|ensordecid[oa]|envenenad[oa]|stunned|paralyz|frightened|incapacitated|prone|restrained|grappled|slowed|charmed|blinded|deafened|poisoned|petrif/i;
+// "ends/cures/removes a condition" — these are SUPPORT, not control.
+const RE_CURE = /termina(?:s|r)?\s+(?:un[oa]?|uno de|with|one of)|ends? (?:one of |a )?(?:the following )?condition|cures?\b|elimina(?:s|r)?\s+(?:un[oa]?|uno de)|remove(?:s)?\s+(?:one|a|the)|restablec/i;
+
+function tagAbility(ab) {
+  const text = (ab.full || ab.desc || '') + ' ' + (ab.name || '');
+  const tags = [];
+  for (const r of TAG_RULES) if (r.re.test(text)) tags.push(r.tag);
+
+  if (RE_CONDITION.test(text)) {
+    if (RE_CURE.test(text)) {
+      if (!tags.includes('heal')) tags.push('heal'); // curing a condition = support
+    } else {
+      tags.push('control'); // inflicting a condition on a target
+    }
+  }
+
+  if (!tags.length) tags.push('utility');
+  return tags;
+}
+
+// ── Rough average-damage estimate for ranking "best damage" ──
+function estimateDamage(ab) {
+  if (ab.dmgEstimate != null) return ab.dmgEstimate; // precomputed for weapon/unarmed attacks
+  const text = ab.full || ab.desc || '';
+  const m = text.match(/(\d+)d(\d+)(?:\s*\+\s*(\d+))?/);
+  if (!m) return 0;
+  const n = +m[1], die = +m[2], bonus = m[3] ? +m[3] : 0;
+  return Math.round((n * (die+1) / 2 + bonus) * 10) / 10;
+}
+
 const SKIP_NAMES = /^(description|descripci[oó]n|characteristics|caracter[ií]sticas|starting\s|multiclass|proficiency|equipment|languages|idiomas|age|size|speed|ability score improvement|style$|instructor$|well-rounded|trained for|creating a|heraldic|xanathar)/i;
 
-function buildAbilities(entries, level, mods, prof, weapons) {
-  const out = { action:[], bonus:[], reaction:[] };
+function buildAbilities(entries, level, mods, prof, weapons, spellEntries, spellDC) {
+  const out = { action:[], bonus:[], reaction:[], utility:[] };
+
 
   const attacks = level >= 11 ? 3 : level >= 5 ? 2 : 1;
 
@@ -451,12 +598,16 @@ function buildAbilities(entries, level, mods, prof, weapons) {
   const abMod   = Math.max(mods.str, mods.dex);
   const unarmedB = abMod + prof;
   const unarmedSign = abMod >= 0 ? '+' : '';
-  const unarmedD = level >= 5 ? `1d8${unarmedSign}${abMod}` : `1d4${unarmedSign}${abMod}`;
-  out.action.push({
+  const unarmedDie = level >= 5 ? 8 : 4;
+  const unarmedD = `1d${unarmedDie}${unarmedSign}${abMod}`;
+  const unarmedObj = {
     id:'__attack', name:'Atacar (sin armas)',
     desc:`${attacks} ${attacks>1?'ataques':'ataque'} · +${unarmedB} al impacto · ${unarmedD}`,
-    full:null, pc:0, once:false, source:'class'
-  });
+    full:null, pc:0, once:false, source:'class', spellLevel:0, dc:null,
+    dmgEstimate: Math.round(attacks * ((unarmedDie+1)/2 + abMod) * 10) / 10
+  };
+  unarmedObj.tags = tagAbility(unarmedObj);
+  out.action.push(unarmedObj);
 
   // ── Weapon attacks ────────────────────────────────
   weapons.filter(w => !/unarmed|sin armas/i.test(w.name)).forEach((w, wi) => {
@@ -490,11 +641,17 @@ function buildAbilities(entries, level, mods, prof, weapons) {
     let dmgStr = `${w.damage1H}${dmgSign}${dmgB}`;
     if (w.damage2H) dmgStr += ` (2 manos: ${w.damage2H}${dmgSign}${dmgB})`;
 
-    out.action.push({
+    const diceM = w.damage1H.match(/(\d+)d(\d+)/);
+    const dmgEst = diceM ? (+diceM[1] * (+diceM[2]+1)/2 + dmgB) : dmgB;
+
+    const wObj = {
       id:`w${wi}`, name:`Atacar con ${w.name}`,
       desc:`${attacks} ${attacks>1?'ataques':'ataque'} · +${atkB} al impacto · ${dmgStr}`,
-      full:null, pc:0, once:false, source:'weapon'
-    });
+      full:null, pc:0, once:false, source:'weapon', spellLevel:0, dc:null,
+      dmgEstimate: Math.round(attacks * dmgEst * 10) / 10
+    };
+    wObj.tags = tagAbility(wObj);
+    out.action.push(wObj);
   });
 
   // ── Feats / item abilities ────────────────────────
@@ -515,11 +672,50 @@ function buildAbilities(entries, level, mods, prof, weapons) {
     const desc  = shortDesc(e.text);
     const full  = fullDescClean(e.text);
 
-    out[type].push({
+    const obj = {
       id:`e${idx}`, name:e.name, desc,
       full: (full !== desc ? full : null),
-      pc, once, source:e.source
-    });
+      pc, once, source:e.source, spellLevel:0, dc:null
+    };
+    obj.tags = tagAbility(obj);
+    out[type].push(obj);
+  });
+
+  // ── Spells ─────────────────────────────────────────
+  const RE_SAVE = /salvaci[oó]n de|tirada de salvaci[oó]n|saving throw/i;
+  (spellEntries || []).forEach(sp => {
+    const stype = detectSpellTime(sp.time);
+
+    const key = sp.name.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+
+    const dcInfo = (sp.abilityIdx !== null) ? spellDC[sp.abilityIdx] : null;
+    const hasSave = RE_SAVE.test(sp.text);
+    const dc = (hasSave && dcInfo) ? dcInfo.dc : null;
+
+    const levelLabel = sp.level === 0 ? 'Truco' : `Nivel ${sp.level}`;
+    const metaParts = [levelLabel];
+    if (sp.ritual) metaParts.push('Ritual');
+    if (sp.time && stype === 'utility') metaParts.push(sp.time);
+    if (sp.range)    metaParts.push(sp.range);
+    if (sp.duration && !/^instantaneous|^instant[aá]neo/i.test(sp.duration)) metaParts.push(sp.duration);
+
+    let full = fullDescClean(sp.text);
+    if (sp.range || sp.duration) {
+      full = `${sp.range ? 'Alcance: '+sp.range : ''}${sp.range && sp.duration ? ' · ' : ''}${sp.duration ? 'Duración: '+sp.duration : ''}\n\n${full}`;
+    }
+    const desc = shortDesc(sp.text);
+
+    const obj = {
+      id: sp.id, name: sp.name, desc,
+      full: (full !== desc ? full : null),
+      pc:0, once:false, source:'spell',
+      spellLevel: sp.level, dc,
+      meta: metaParts.join(' · ')
+    };
+    obj.tags = tagAbility(obj);
+    out[stype].push(obj);
   });
 
   return out;
@@ -594,6 +790,19 @@ function render() {
         <button class="calc-act calc-dmg" onclick="calcApply('damage')">DAÑO</button>
       </div>
     </div>`;
+  }
+
+  // ── Spell DC / attack bonus ───────────────────────
+  const dcKeys = Object.keys(char.spellDC || {});
+  if (dcKeys.length > 0) {
+    h += `<div class="dc-row">`;
+    dcKeys.forEach(k => {
+      const info = char.spellDC[k];
+      const ab = ABILITY_ES[parseInt(k)] || '';
+      h += `<div class="dc-badge">CD conjuros (${ab}): <b>${info.dc}</b></div>`;
+      h += `<div class="dc-badge">Ataque conjuros: <b>+${info.atk}</b></div>`;
+    });
+    h += `</div>`;
   }
 
   // ── Trackers ─────────────────────────────────────
@@ -676,16 +885,36 @@ function render() {
         /concentraci|psionic energy|puntos de|superiority/i.test(t.label));
       const pcCur = pcTracker ? (G.trackers[pcTracker.id] ?? pcTracker.max) : 99;
       const pcOk  = pcCur >= ab.pc;
-      const dis   = slotUsed || onceUsed || !pcOk;
-      const cls2  = slotUsed ? 'used' : (!pcOk || onceUsed ? 'locked' : '');
-      const fn    = dis ? '' : `useAb('${ab.id}','${sec.flag}',${ab.pc},${ab.once})`;
+
+      // Spell slot availability
+      let slotOk = true, slotTracker = null;
+      if (ab.spellLevel > 0) {
+        slotTracker = char.trackers.find(t => t.id === `sl${ab.spellLevel}`);
+        const slotCur = slotTracker ? (G.trackers[slotTracker.id] ?? slotTracker.max) : 0;
+        slotOk = slotTracker ? slotCur > 0 : false;
+      }
+
+      const dis   = slotUsed || onceUsed || !pcOk || !slotOk;
+      const cls2  = slotUsed ? 'used' : (!pcOk || onceUsed || !slotOk ? 'locked' : '');
+      const fn    = dis ? '' : `useAb('${ab.id}','${sec.flag}',${ab.pc},${ab.once},${ab.spellLevel||0})`;
       const srcLabel = ab.source === 'item'   ? '📦 ítem' :
                        ab.source === 'weapon' ? '🗡 arma' :
                        ab.source === 'race'   ? '🧬 raza' :
-                       ab.source === 'background' ? '🗺 trasfondo' : '';
+                       ab.source === 'background' ? '🗺 trasfondo' :
+                       ab.source === 'spell'  ? '🔮 conjuro' : '';
 
       SHORT_DESC[ab.id] = ab.desc;
       if (ab.full) FULL_DESC[ab.id] = ab.full;
+
+      // Cost badge: spell slot > PC/resource > free
+      let costBadge;
+      if (ab.spellLevel > 0) {
+        costBadge = `<span class="cost ${slotOk?'c-blue':'c-locked'}">Nv.${ab.spellLevel}</span>`;
+      } else if (ab.pc > 0) {
+        costBadge = `<span class="cost ${pcOk?'c-blue':'c-locked'}">${ab.pc} PC</span>`;
+      } else {
+        costBadge = `<span class="cost c-free">gratis</span>`;
+      }
 
       h += `<div class="ab ${cls2}" onclick="${fn}">
         <button class="x-btn" onclick="event.stopPropagation();hideAbility('${ab.id}')" title="Ocultar">✕</button>
@@ -693,12 +922,11 @@ function render() {
           <div class="ab-name">${esc(ab.name)}</div>
           <div class="ab-desc" id="desc-${ab.id}">${esc(ab.desc)}</div>
           ${ab.full ? `<span class="ab-more" id="more-${ab.id}" onclick="event.stopPropagation();toggleDesc('${ab.id}')">ver más ▾</span>` : ''}
-          ${srcLabel ? `<div class="ab-src">${srcLabel}</div>` : ''}
+          ${ab.meta || srcLabel ? `<div class="ab-src">${ab.meta ? esc(ab.meta) : ''}${ab.meta && srcLabel ? ' · ' : ''}${srcLabel}</div>` : ''}
         </div>
         <div class="ab-costs">
-          <span class="cost ${ab.pc>0?(pcOk?'c-blue':'c-locked'):'c-free'}">
-            ${ab.pc>0 ? ab.pc+' PC' : 'gratis'}
-          </span>
+          ${costBadge}
+          ${ab.dc != null ? `<span class="cost c-amber">CD ${ab.dc}</span>` : ''}
           ${ab.once ? `<span class="cost ${onceUsed?'c-locked':'c-amber'}">${onceUsed?'✓ usada':'1/turno'}</span>` : ''}
         </div>
       </div>`;
@@ -706,13 +934,13 @@ function render() {
     h += `</div>`;
   });
 
-  // ── Class-specific combos ─────────────────────────
-  const classNames = (char.classInfo || []).map(c => c.name).join(' ').toLowerCase();
-  if (/monje|monk/i.test(classNames)) {
-    h += renderMonkCombos();
-  } else if (/fighter|guerrero|luchador/i.test(classNames)) {
-    h += renderFighterCombos();
-  }
+  // ── Universal combo suggestions ───────────────────
+  h += renderSuggestions();
+
+  // ── Out-of-combat / utility section ───────────────
+  const utilAll = char.abilities.utility || [];
+  hiddenACount += utilAll.filter(a => G.hidden.abilities[a.id]).length;
+  h += renderUtilitySection();
 
   // ── Footer: open recycle bin ──────────────────────
   const totalHidden = hiddenACount + hiddenTCount;
@@ -721,6 +949,175 @@ function render() {
   }
 
   document.getElementById('content').innerHTML = h;
+}
+
+// ═══════════════════════════════════════════════════
+//  UNIVERSAL SUGGESTION ENGINE
+//  Looks at every currently-available ability/spell and
+//  groups the best picks by what they accomplish, so the
+//  same code works for any character built in FC5e.
+// ═══════════════════════════════════════════════════
+const SUGGESTION_CATS = [
+  { key:'damage',   label:'💥 Mayor daño' },
+  { key:'heal',     label:'❤️ Curación / Soporte' },
+  { key:'control',  label:'🌀 Control de combate' },
+  { key:'defense',  label:'🛡️ Defensa / Supervivencia' },
+  { key:'mobility', label:'💨 Movilidad' },
+];
+const SLOT_LABELS = { action:'Acción', bonus:'Adicional', reaction:'Reacción' };
+
+function matchesCategory(tags, cat) {
+  switch (cat) {
+    case 'damage':   return tags.includes('damage') && !tags.includes('heal');
+    case 'heal':     return tags.includes('heal') || (tags.includes('buff') && !tags.includes('damage') && !tags.includes('control'));
+    case 'control':  return tags.includes('control');
+    case 'defense':  return tags.includes('defense');
+    case 'mobility': return tags.includes('mobility');
+    default: return false;
+  }
+}
+
+function abilityAvailable(ab, secFlag) {
+  if (G[secFlag]) return false;
+  if (ab.once && G.oncePerTurn[ab.id]) return false;
+  const pcTracker = char.trackers.find(t =>
+    /concentraci|psionic energy|puntos de|superiority/i.test(t.label));
+  const pcCur = pcTracker ? (G.trackers[pcTracker.id] ?? pcTracker.max) : 99;
+  if (pcCur < ab.pc) return false;
+  if (ab.spellLevel > 0) {
+    const st = char.trackers.find(t => t.id === `sl${ab.spellLevel}`);
+    const cur = st ? (G.trackers[st.id] ?? st.max) : 0;
+    if (cur <= 0) return false;
+  }
+  return true;
+}
+
+function buildSuggestions() {
+  const results = [];
+  SUGGESTION_CATS.forEach(cat => {
+    const picks = {};
+    ['action','bonus','reaction'].forEach(sec => {
+      const secFlag = sec === 'action' ? 'actionUsed' : sec === 'bonus' ? 'bonusUsed' : 'reactionUsed';
+      const candidates = (char.abilities[sec] || [])
+        .filter(ab => !G.hidden.abilities[ab.id])
+        .filter(ab => matchesCategory(ab.tags || [], cat.key))
+        .filter(ab => abilityAvailable(ab, secFlag));
+      if (!candidates.length) return;
+
+      let best;
+      if (cat.key === 'damage') {
+        best = candidates.reduce((a,b) => estimateDamage(b) > estimateDamage(a) ? b : a);
+      } else {
+        best = candidates.reduce((a,b) => (b.spellLevel||0) > (a.spellLevel||0) ? b : a);
+      }
+      picks[sec] = { ab: best, secFlag };
+    });
+    if (Object.keys(picks).length) results.push({ ...cat, picks });
+  });
+  return results;
+}
+
+function renderSuggestions() {
+  const suggestions = buildSuggestions();
+
+  let h = `<div class="section"><div class="sec-head">
+    <div class="sec-dot d-combo"></div>
+    <span class="sec-name">Sugerencias para este turno</span>
+  </div>`;
+
+  if (!suggestions.length) {
+    h += `<div class="sugg-card"><div class="sugg-empty">Sin opciones disponibles ahora — termina el turno o descansa para recuperar recursos.</div></div>`;
+    return h + `</div>`;
+  }
+
+  suggestions.forEach(s => {
+    h += `<div class="sugg-card"><div class="sugg-cat">${s.label}</div>`;
+    ['action','bonus','reaction'].forEach(sec => {
+      const pick = s.picks[sec];
+      if (!pick) return;
+      const ab = pick.ab;
+      const fn = `useAb('${ab.id}','${pick.secFlag}',${ab.pc},${ab.once},${ab.spellLevel||0})`;
+      let extra = '';
+      if (s.key === 'damage') {
+        const d = estimateDamage(ab);
+        if (d) extra = `~${d} dmg`;
+      } else if (ab.dc != null) {
+        extra = `CD ${ab.dc}`;
+      } else if (ab.spellLevel > 0) {
+        extra = `Nv.${ab.spellLevel}`;
+      }
+      h += `<div class="sugg-pick" onclick="${fn}">
+        <span class="sugg-slot">${SLOT_LABELS[sec]}</span>
+        <span class="sugg-name">${esc(ab.name)}</span>
+        ${extra ? `<span class="sugg-extra">${esc(extra)}</span>` : ''}
+      </div>`;
+    });
+    h += `</div>`;
+  });
+
+  return h + `</div>`;
+}
+
+// ═══════════════════════════════════════════════════
+//  OUT-OF-COMBAT / UTILITY SECTION
+//  Rituals, long-casting spells, exploration & social
+//  tools. Not tied to the turn structure — using one
+//  spends its resource (if any) right away, so it
+//  carries over correctly into a later combat.
+// ═══════════════════════════════════════════════════
+function renderUtilitySection() {
+  const all = (char.abilities.utility || []).filter(a => !G.hidden.abilities[a.id]);
+  if (!all.length) return '';
+
+  const open = !!G.showUtility;
+  let h = `<div class="util-toggle ${open?'open':''}" onclick="toggleUtility()">
+    <span>🧭 Fuera de combate (${all.length})</span>
+    <span class="chev">▶</span>
+  </div>`;
+  if (!open) return h;
+
+  h += `<div class="section">`;
+  all.forEach(ab => {
+    SHORT_DESC[ab.id] = ab.desc;
+    if (ab.full) FULL_DESC[ab.id] = ab.full;
+
+    let slotOk = true, slotTracker = null;
+    if (ab.spellLevel > 0) {
+      slotTracker = char.trackers.find(t => t.id === `sl${ab.spellLevel}`);
+      const slotCur = slotTracker ? (G.trackers[slotTracker.id] ?? slotTracker.max) : 0;
+      slotOk = slotTracker ? slotCur > 0 : false;
+    }
+    const srcLabel = ab.source === 'item'   ? '📦 ítem' :
+                     ab.source === 'race'   ? '🧬 raza' :
+                     ab.source === 'background' ? '🗺 trasfondo' :
+                     ab.source === 'spell'  ? '🔮 conjuro' : '';
+
+    h += `<div class="ab util">
+      <button class="x-btn" onclick="hideAbility('${ab.id}')" title="Ocultar">✕</button>
+      <div class="ab-main">
+        <div class="ab-name">${esc(ab.name)}</div>
+        <div class="ab-desc" id="desc-${ab.id}">${esc(ab.desc)}</div>
+        ${ab.full ? `<span class="ab-more" id="more-${ab.id}" onclick="toggleDesc('${ab.id}')">ver más ▾</span>` : ''}
+        ${ab.meta || srcLabel ? `<div class="ab-src">${ab.meta?esc(ab.meta):''}${ab.meta&&srcLabel?' · ':''}${srcLabel}</div>` : ''}
+      </div>
+      <div class="ab-costs">
+        ${ab.spellLevel>0
+          ? `<span class="cost ${slotOk?'c-blue':'c-locked'}">Nv.${ab.spellLevel}</span>`
+          : `<span class="cost c-free">gratis</span>`}
+        ${ab.dc!=null ? `<span class="cost c-amber">CD ${ab.dc}</span>` : ''}
+        ${ab.spellLevel>0 ? `<button class="usar-btn" onclick="useUtility('${ab.id}',${ab.spellLevel})" ${slotOk?'':'disabled'}>Usar</button>` : ''}
+      </div>
+    </div>`;
+  });
+  h += `</div>`;
+  return h;
+}
+
+function toggleUtility() { G.showUtility = !G.showUtility; save(); render(); }
+function useUtility(id, spellLevel) {
+  spendSpellSlot(spellLevel);
+  save(); render();
+  toast('Espacio de conjuro gastado');
 }
 
 // ── Toggle full / short description ─────────────────
@@ -740,82 +1137,13 @@ function toggleDesc(id) {
   }
 }
 
-// ── Monk combos ─────────────────────────────────────
-function renderMonkCombos() {
-  const pcT = char.trackers.find(t => /concentraci/i.test(t.label));
-  const pc  = pcT ? (G.trackers[pcT.id] ?? pcT.max) : 0;
-  const brazos = G.buffs.brazos;
-
-  const combos = [
-    { name:'⚡ Apertura de combate',
-      steps:'Tirada de iniciativa → Metabolismo Asombroso: recuperar todos los PC\nAad: Brazos + Rostro (2 PC) → daño 2d8 inmediato\nA: Atacar ×2 + Golpe Aturdidor (1 PC)',
-      pcMin:3, fn:'cMonkApertura()' },
-    { name:`💥 Ráfaga máxima (${brazos?5:4} ataques)`,
-      steps:`A: Atacar ×2\nAad: Ráfaga de golpes${brazos?' ★ 3 extra':' 2 extra'} (1 PC)\nGolpe Aturdidor (1 PC)`,
-      pcMin:2, fn:'cMonkRafaga()' },
-    { name:'🛡 Control + resistencia',
-      steps:'A: Atacar ×2 + Golpe Aturdidor (1 PC) → aturdido\nAad: Defensa paciente ★ (1 PC) → esquivar + 2d8 PG temp',
-      pcMin:2, fn:'cMonkControl()' },
-    { name:'💨 Reposicionamiento',
-      steps:'Aad: Paso del viento ★ (1 PC)\nA: Atacar ×2 desde nueva posición',
-      pcMin:1, fn:'cMonkMov()' }
-  ];
-
-  let h = `<div class="section"><div class="sec-head">
-    <div class="sec-dot d-combo"></div>
-    <span class="sec-name">Combos sugeridos</span>
-  </div>`;
-
-  combos.forEach(c => {
-    const ok = pc >= c.pcMin && !G.actionUsed && !G.bonusUsed;
-    h += `<div class="combo ${ok?'':'locked'}" onclick="${ok?c.fn:''}">
-      <div class="combo-name">${c.name}</div>
-      <div class="combo-steps">${c.steps.replace(/\n/g,'<br>')}</div>
-    </div>`;
-  });
-  return h + `</div>`;
-}
-
-// ── Fighter combos ───────────────────────────────────
-function renderFighterCombos() {
-  const asT  = char.trackers.find(t => /action surge/i.test(t.label));
-  const asOk = asT ? (G.trackers[asT.id] ?? asT.max) > 0 : false;
-  const swT  = char.trackers.find(t => /second wind/i.test(t.label));
-  const swOk = swT ? (G.trackers[swT.id] ?? swT.max) > 0 : false;
-  const attacks = char.cLvl >= 11 ? 3 : char.cLvl >= 5 ? 2 : 1;
-
-  const combos = [
-    { name:`⚡ Avalancha (${attacks + attacks} ataques)`,
-      steps:`A: Atacar ×${attacks}\nAction Surge → A extra: Atacar ×${attacks} de nuevo`,
-      ok: asOk && !G.actionUsed, fn:'cFighterSurge()' },
-    { name:'🛡 Recuperar y resistir',
-      steps:'Aad: Second Wind → recuperar 1d10 + nivel PG\n(úsalo cuando estés bajo de vida)',
-      ok: swOk && !G.bonusUsed, fn:'cFighterWind()' },
-    { name:'🎯 Ataque + maniobra',
-      steps:`A: Atacar ×${attacks} con dado de superioridad en un golpe\nAad: Second Wind si necesitas curación`,
-      ok: !G.actionUsed, fn:'cFighterManeuver()' }
-  ];
-
-  let h = `<div class="section"><div class="sec-head">
-    <div class="sec-dot d-combo"></div>
-    <span class="sec-name">Combos sugeridos</span>
-  </div>`;
-
-  combos.forEach(c => {
-    h += `<div class="combo ${c.ok?'':'locked'}" onclick="${c.ok?c.fn:''}">
-      <div class="combo-name">${c.name}</div>
-      <div class="combo-steps">${c.steps.replace(/\n/g,'<br>')}</div>
-    </div>`;
-  });
-  return h + `</div>`;
-}
-
 // ═══════════════════════════════════════════════════
 //  ACTIONS
 // ═══════════════════════════════════════════════════
-function useAb(id, flag, pc, once) {
+function useAb(id, flag, pc, once, spellLevel) {
   G[flag] = true;
   if (pc > 0) spendResource(pc);
+  if (spellLevel > 0) spendSpellSlot(spellLevel);
   if (once) G.oncePerTurn[id] = true;
   save(); render();
 }
@@ -824,6 +1152,12 @@ function spendResource(n) {
   const t = char.trackers.find(t => /concentraci|psionic energy|superiority/i.test(t.label));
   if (!t) return;
   G.trackers[t.id] = Math.max(0, (G.trackers[t.id] ?? t.max) - n);
+}
+
+function spendSpellSlot(level) {
+  const t = char.trackers.find(t => t.id === `sl${level}`);
+  if (!t) return;
+  G.trackers[t.id] = Math.max(0, (G.trackers[t.id] ?? t.max) - 1);
 }
 
 function chTracker(id, delta) {
@@ -845,13 +1179,13 @@ function clickTDot(id, i) {
 function hideAbility(id) { G.hidden.abilities[id] = true; save(); render(); }
 function hideTracker(id) { G.hidden.trackers[id] = true; save(); render(); }
 
-const SEC_LABELS = { action:'Acción', bonus:'Acción adicional', reaction:'Reacción' };
+const SEC_LABELS = { action:'Acción', bonus:'Acción adicional', reaction:'Reacción', utility:'Fuera de combate' };
 
 function openTrash() {
   const groups = [];
 
   // Hidden abilities, grouped by action type
-  ['action','bonus','reaction'].forEach(key => {
+  ['action','bonus','reaction','utility'].forEach(key => {
     const items = (char.abilities[key] || []).filter(a => G.hidden.abilities[a.id]);
     if (items.length) {
       groups.push({
@@ -922,8 +1256,6 @@ function restoreAllFromTrash() {
   G.hidden = { abilities:{}, trackers:{} };
   save(); render(); closeTrash();
 }
-
-function toggleBuff(k) { G.buffs[k] = !G.buffs[k]; save(); render(); }
 
 function chHP(d) {
   G.hp = Math.min(char.hpMax, Math.max(0, (G.hp ?? char.hpCur) + d));
@@ -1015,36 +1347,9 @@ function shortRest() {
 
 function longRest() {
   char.trackers.forEach(t => { G.trackers[t.id] = t.max; });
-  G.hp = char.hpMax; G.tempHp = 0; G.buffs = {}; G.round = 1;
+  G.hp = char.hpMax; G.tempHp = 0; G.round = 1;
   finTurn(); toast('Descanso largo — todo recuperado');
 }
-
-// Monk combos
-function cMonkApertura() {
-  const met = char.trackers.find(t => /metabolismo/i.test(t.label));
-  if (met) G.trackers[met.id] = 0;
-  spendResource(3); G.buffs.brazos = G.buffs.rostro = true;
-  G.bonusUsed = G.actionUsed = true;
-  save(); render();
-}
-function cMonkRafaga()  { if (!G.actionUsed && !G.bonusUsed) { spendResource(2); G.actionUsed = G.bonusUsed = true; } save(); render(); }
-function cMonkControl() { if (!G.actionUsed && !G.bonusUsed) { spendResource(2); G.actionUsed = G.bonusUsed = true; } save(); render(); }
-function cMonkMov()     { if (!G.actionUsed && !G.bonusUsed) { spendResource(1); G.actionUsed = G.bonusUsed = true; } save(); render(); }
-
-// Fighter combos
-function cFighterSurge() {
-  const asT = char.trackers.find(t => /action surge/i.test(t.label));
-  if (asT) G.trackers[asT.id] = Math.max(0, (G.trackers[asT.id] ?? asT.max) - 1);
-  G.actionUsed = true;
-  save(); render();
-}
-function cFighterWind() {
-  const swT = char.trackers.find(t => /second wind/i.test(t.label));
-  if (swT) G.trackers[swT.id] = Math.max(0, (G.trackers[swT.id] ?? swT.max) - 1);
-  G.bonusUsed = true;
-  save(); render();
-}
-function cFighterManeuver() { G.actionUsed = true; save(); render(); }
 
 // ═══════════════════════════════════════════════════
 //  PERSISTENCE
@@ -1079,7 +1384,7 @@ function importXML(xmlText) {
   try {
     char = parseFC5eXML(xmlText);
     G = { round:1, hp:char.hpCur, tempHp:0, actionUsed:false, bonusUsed:false,
-          reactionUsed:false, oncePerTurn:{}, trackers:{}, buffs:{},
+          reactionUsed:false, oncePerTurn:{}, trackers:{}, showUtility:false,
           hidden:{ abilities:{}, trackers:{} } };
     char.trackers.forEach(t => { G.trackers[t.id] = t.max; });
     save();
