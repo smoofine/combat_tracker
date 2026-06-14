@@ -66,7 +66,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);
 .content{padding:12px 14px 32px;flex:1}
 
 /* HP row */
-.hp-row{display:flex;align-items:center;gap:8px;margin-bottom:10px;
+.hp-row{display:flex;align-items:center;gap:8px;margin-bottom:6px;
   background:var(--s1);border:1px solid var(--border);border-radius:var(--r);padding:10px 14px}
 .hp-label{font-size:.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;flex:1}
 .hp-controls{display:flex;align-items:center;gap:8px}
@@ -74,8 +74,38 @@ html,body{height:100%;background:var(--bg);color:var(--text);
   width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:1.1rem;
   display:flex;align-items:center;justify-content:center}
 .adj-btn:active{opacity:.6}
-.hp-val{font-size:1.15rem;font-weight:700;min-width:72px;text-align:center}
+.hp-val{font-size:1.15rem;font-weight:700;min-width:72px;text-align:center;cursor:pointer}
 .hp-max{font-size:.78rem;color:var(--muted);font-weight:400}
+.hp-temp{font-size:.78rem;color:var(--amber);font-weight:600;margin-left:2px}
+.calc-btn{background:var(--s2);border:1px solid var(--border2);color:var(--blue);
+  width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:1rem;
+  display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.calc-btn:active{opacity:.6}
+.calc-btn.open{background:var(--blue-bg);border-color:var(--blue-border)}
+
+/* HP calculator panel */
+.calc-panel{background:var(--s1);border:1px solid var(--border);border-radius:var(--r);
+  padding:10px;margin-bottom:6px}
+.calc-display{background:#0c0c14;border:1px solid var(--border);border-radius:var(--r-sm);
+  padding:10px 12px;text-align:right;font-size:1.4rem;font-weight:700;
+  min-height:1.6em;margin-bottom:8px;letter-spacing:.02em;word-break:break-all;
+  color:var(--text)}
+.calc-display.empty{color:var(--hint)}
+.calc-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-bottom:8px}
+.calc-key{background:var(--s2);border:1px solid var(--border2);color:var(--text);
+  border-radius:var(--r-sm);padding:11px 0;font-size:.95rem;font-weight:600;
+  cursor:pointer;text-align:center}
+.calc-key:active{opacity:.6}
+.calc-key.op{color:var(--amber)}
+.calc-key.die{color:var(--blue);font-size:.82rem}
+.calc-key.clear{color:var(--red)}
+.calc-actions{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px}
+.calc-act{border-radius:var(--r-sm);padding:11px 0;font-size:.85rem;font-weight:700;
+  cursor:pointer;text-align:center;border:none;color:#fff}
+.calc-act:active{opacity:.7}
+.calc-heal{background:#2d7d4f}
+.calc-temp{background:#3a6b9e}
+.calc-dmg{background:#8b2c2c}
 
 /* Tracker cards */
 .trackers-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:6px;margin-bottom:10px}
@@ -151,6 +181,31 @@ html,body{height:100%;background:var(--bg);color:var(--text);
   padding:9px;border-radius:var(--r-sm);font-size:.78rem;cursor:pointer;width:100%;text-align:center;margin-top:8px}
 .footer-btn:active{opacity:.6}
 
+/* Trash modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.6);
+  display:flex;align-items:flex-end;justify-content:center;z-index:200}
+.modal-sheet{background:var(--s1);border-radius:var(--r) var(--r) 0 0;
+  width:100%;max-width:480px;max-height:78vh;display:flex;flex-direction:column;
+  border:1px solid var(--border2);border-bottom:none}
+.modal-head{display:flex;align-items:center;gap:8px;padding:14px 14px 10px;
+  border-bottom:1px solid var(--border)}
+.modal-title{font-weight:700;font-size:.95rem;flex:1}
+.modal-close{background:var(--s2);border:1px solid var(--border2);color:var(--muted);
+  width:28px;height:28px;border-radius:50%;cursor:pointer;font-size:.9rem;
+  display:flex;align-items:center;justify-content:center}
+.modal-close:active{opacity:.6}
+.modal-body{overflow-y:auto;padding:8px 14px 14px;flex:1}
+.modal-empty{color:var(--hint);font-size:.85rem;text-align:center;padding:24px 0}
+.trash-group{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;
+  color:var(--muted);margin:10px 0 6px}
+.trash-item{display:flex;align-items:center;gap:8px;background:var(--s2);
+  border:1px solid var(--border);border-radius:var(--r-sm);padding:8px 10px;margin-bottom:5px}
+.trash-name{flex:1;font-size:.86rem;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.trash-restore{background:var(--blue-bg);border:1px solid var(--blue-border);color:var(--blue);
+  border-radius:var(--r-sm);padding:6px 12px;font-size:.78rem;font-weight:600;cursor:pointer;flex-shrink:0}
+.trash-restore:active{opacity:.6}
+.modal-foot{padding:10px 14px;border-top:1px solid var(--border)}
+
 #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);
   background:var(--s3);border:1px solid var(--border2);color:var(--text);
   padding:9px 18px;border-radius:20px;font-size:.83rem;
@@ -193,6 +248,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);
 </div>
 
 <div id="toast"></div>
+<div id="trash-modal"></div>
 
 <script>
 // ═══════════════════════════════════════════════════
@@ -210,13 +266,17 @@ function esc(s) {
 //  STATE
 // ═══════════════════════════════════════════════════
 let char = null;
-let G = { round:1, hp:null, actionUsed:false, bonusUsed:false,
+let G = { round:1, hp:null, tempHp:0, actionUsed:false, bonusUsed:false,
   reactionUsed:false, oncePerTurn:{}, trackers:{}, buffs:{},
   hidden:{ abilities:{}, trackers:{} } };
 
 // Maps populated on each render(), used by toggleDesc()
 let SHORT_DESC = {};
 let FULL_DESC  = {};
+
+// HP calculator (not persisted — resets each session)
+let calcOpen = false;
+let calcExpr = '';
 
 // ═══════════════════════════════════════════════════
 //  XML PARSER
@@ -259,67 +319,33 @@ function parseFC5eXML(xml) {
   let trackers = [];
   classInfo.forEach((ci, classIdx) => {
     const cls = ci.el;
-    const baseTrackers = {};
-    [...cls.children].forEach(c => {
+
+    // Direct <tracker> children of <class> = the curated/selected resources
+    [...cls.children].forEach((c, i) => {
       if (c.tagName.toLowerCase() !== 'tracker') return;
       const label = $(c, 'label');
       if (!label) return;
-      baseTrackers[label] = {
-        label,
-        type:      parseInt($(c, 'type'))      || 1,
-        resetType: parseInt($(c, 'resetType')) || 0,
-        value:     parseInt($(c, 'value'))     || 0,
-        formula:   $(c, 'formula')
-      };
-    });
+      const type      = parseInt($(c, 'type'))      || 1;
+      const resetType = parseInt($(c, 'resetType')) || 0;
+      const value     = $(c, 'value') !== '' ? parseInt($(c, 'value')) : null;
+      const formula   = $(c, 'formula');
+      const fNum      = parseInt(formula);
+      const formulaIsNum = !isNaN(fNum) && String(fNum) === formula.trim();
 
-    const levelUp = {};
-    $$(cls, 'autolevel').forEach(al => {
-      const alLvl = parseInt($(al, 'level')) || 1;
-      if (alLvl > ci.level) return;
-      $$(al, 'tracker').forEach(t => {
-        const label = $(t, 'label');
-        if (!label) return;
-        if (!levelUp[label] || alLvl >= (levelUp[label]._lvl || 0)) {
-          levelUp[label] = {
-            _lvl:      alLvl,
-            type:      parseInt($(t, 'type'))      || 1,
-            resetType: parseInt($(t, 'resetType')) || 0,
-            value:     parseInt($(t, 'value'))     || 0,
-            formula:   $(t, 'formula')
-          };
-        }
-      });
-    });
-
-    Object.keys(levelUp).forEach(label => {
-      const lu = levelUp[label];
-      if (!baseTrackers[label]) { baseTrackers[label] = { label, ...lu }; return; }
-      const bt = baseTrackers[label];
-      if (lu.formula) bt.formula = lu.formula;
-      if (lu.value  > 0) bt.value = lu.value;
-      if (lu.type)       bt.type  = lu.type;
-      if (lu.resetType > 0) bt.resetType = lu.resetType;
-    });
-
-    Object.values(baseTrackers).forEach((t, i) => {
-      t.id = `t${classIdx}_${i}`;
-      t.classIdx = classIdx;
-      const n = parseInt(t.formula);
-      const isPureNum = !isNaN(n) && String(n) === t.formula.trim();
-
-      if (t.type === 2 && t.formula.includes('d')) {
-        t.isDice  = true;
-        t.diceFmt = t.formula;
-        const likelyCount = t.value > 0 && ![4,6,8,10,12,20].includes(t.value);
-        t.max = likelyCount ? t.value : 0;
-      } else if (isPureNum) {
-        t.max = n;
+      let max, isDice = false, diceFmt = null;
+      if (type === 2 && /d/i.test(formula)) {
+        isDice = true; diceFmt = formula;
+        max = value ?? 0;
       } else {
-        t.max = t.value || 1;
+        max = formulaIsNum ? fNum : (value ?? 0);
       }
-      t.current = t.max;
-      if (t.resetType > 0 || (t.isDice && t.max > 0)) trackers.push(t);
+
+      if (resetType > 0 && max > 0) {
+        trackers.push({
+          id:`t${classIdx}_${i}`, classIdx, label, type, resetType,
+          max, current:max, isDice, diceFmt
+        });
+      }
     });
   });
 
@@ -331,10 +357,17 @@ function parseFC5eXML(xml) {
   });
   trackers = Object.values(trackerByLabel);
 
-  // ── Feats (class × N, race, background) → ability candidates ──
+  // ── Feats: direct <feat> children of <class> = curated/selected list ──
+  // (autolevel dumps EVERY subclass option; direct children only contain
+  //  what was actually chosen for this character)
   const allFeats = [];
   classInfo.forEach((ci, classIdx) => {
-    $$(ci.el, 'feat').forEach(f => {
+    let direct = [...ci.el.children].filter(c => c.tagName.toLowerCase() === 'feat');
+    if (direct.length === 0) {
+      // Fallback: very old / minimal exports — scan autolevel
+      direct = $$(ci.el, 'feat');
+    }
+    direct.forEach(f => {
       const n = $(f,'name'), tx = $(f,'text');
       if (n.length > 1) allFeats.push({ name:n, text:tx, source:'class', classIdx });
     });
@@ -359,7 +392,11 @@ function parseFC5eXML(xml) {
         type,
         damage1H: $(it,'damage1H'),
         damage2H: $(it,'damage2H'),
-        weaponProperty: parseInt($(it,'weaponProperty')) || 0
+        weaponProperty: parseInt($(it,'weaponProperty')) || 0,
+        mods: $$(it,'mod').map(md => ({
+          type:  parseInt($(md,'type')) || 0,
+          value: $(md,'value') !== '' ? parseInt($(md,'value')) : null
+        }))
       });
     } else if (itName && itText) {
       itemFeats.push({ name:itName, text:itText, source:'item' });
@@ -426,11 +463,30 @@ function buildAbilities(entries, level, mods, prof, weapons) {
     const finesse  = (w.weaponProperty & FINESSE_BIT) !== 0;
     const isRanged = w.type === 6;
     const abMod    = isRanged ? mods.dex : (finesse ? Math.max(mods.str, mods.dex) : mods.str);
-    const atkB     = abMod + prof;
-    const magicM   = w.name.match(/\+(\d)\b/);
-    const magicB   = magicM ? parseInt(magicM[1]) : 0;
-    const dmgB     = abMod + magicB;
-    const dmgSign  = dmgB >= 0 ? '+' : '';
+
+    let modAtk = 0, modDmg = 0, hasMods = false;
+    (w.mods || []).forEach(md => {
+      if (md.type === 1) {           // Weapon Attacks (+) modifier
+        hasMods = true;
+        const v = md.value != null ? md.value : prof; // "no value" = + Proficiency Bonus
+        modAtk += v;
+        if (md.value == null) modDmg += v; // extra prof-style mods also boost damage
+      } else if (md.type === 2) {    // Weapon Damage (+) modifier
+        hasMods = true;
+        modDmg += (md.value != null ? md.value : prof);
+      }
+    });
+
+    // Fallback for weapons without explicit <mod> data: read "+N" from the name
+    if (!hasMods) {
+      const magicM = w.name.match(/\+(\d)\b/);
+      const magicB = magicM ? parseInt(magicM[1]) : 0;
+      modAtk = magicB; modDmg = magicB;
+    }
+
+    const atkB    = abMod + prof + modAtk;
+    const dmgB    = abMod + modDmg;
+    const dmgSign = dmgB >= 0 ? '+' : '';
     let dmgStr = `${w.damage1H}${dmgSign}${dmgB}`;
     if (w.damage2H) dmgStr += ` (2 manos: ${w.damage2H}${dmgSign}${dmgB})`;
 
@@ -485,14 +541,60 @@ function render() {
   let h = '';
 
   // ── HP ──────────────────────────────────────────
+  const tempHp = G.tempHp || 0;
   h += `<div class="hp-row">
     <span class="hp-label">Puntos de golpe</span>
     <div class="hp-controls">
+      ${tempHp > 0 ? `<span class="hp-temp">+${tempHp}</span>` : ''}
       <button class="adj-btn" onclick="chHP(-1)">−</button>
-      <div class="hp-val">${hp}<span class="hp-max"> / ${char.hpMax}</span></div>
+      <div class="hp-val" onclick="toggleCalc()">${hp}<span class="hp-max"> / ${char.hpMax}</span></div>
       <button class="adj-btn" onclick="chHP(1)">+</button>
+      <button class="calc-btn ${calcOpen?'open':''}" onclick="toggleCalc()" title="Calculadora">🧮</button>
     </div>
   </div>`;
+
+  if (calcOpen) {
+    const exprEmpty = calcExpr.length === 0;
+    h += `<div class="calc-panel">
+      <div class="calc-display ${exprEmpty?'empty':''}">${esc(calcExpr || '0')}</div>
+      <div class="calc-grid">
+        <button class="calc-key die" onclick="calcRoll(4)">d4</button>
+        <button class="calc-key die" onclick="calcRoll(6)">d6</button>
+        <button class="calc-key die" onclick="calcRoll(8)">d8</button>
+        <button class="calc-key clear" onclick="calcBackspace()">⌫</button>
+
+        <button class="calc-key die" onclick="calcRoll(10)">d10</button>
+        <button class="calc-key die" onclick="calcRoll(12)">d12</button>
+        <button class="calc-key die" onclick="calcRoll(20)">d20</button>
+        <button class="calc-key op" onclick="calcKey('/')">÷</button>
+
+        <button class="calc-key" onclick="calcKey('7')">7</button>
+        <button class="calc-key" onclick="calcKey('8')">8</button>
+        <button class="calc-key" onclick="calcKey('9')">9</button>
+        <button class="calc-key op" onclick="calcKey('*')">×</button>
+
+        <button class="calc-key" onclick="calcKey('4')">4</button>
+        <button class="calc-key" onclick="calcKey('5')">5</button>
+        <button class="calc-key" onclick="calcKey('6')">6</button>
+        <button class="calc-key op" onclick="calcKey('-')">−</button>
+
+        <button class="calc-key" onclick="calcKey('1')">1</button>
+        <button class="calc-key" onclick="calcKey('2')">2</button>
+        <button class="calc-key" onclick="calcKey('3')">3</button>
+        <button class="calc-key op" onclick="calcKey('+')">+</button>
+
+        <button class="calc-key" onclick="calcKey('0')">0</button>
+        <button class="calc-key" onclick="calcKey('(')">(</button>
+        <button class="calc-key" onclick="calcKey(')')">)</button>
+        <button class="calc-key clear" onclick="calcClear()">C</button>
+      </div>
+      <div class="calc-actions">
+        <button class="calc-act calc-heal" onclick="calcApply('heal')">CURAR</button>
+        <button class="calc-act calc-temp" onclick="calcApply('temp')">PG TEMP</button>
+        <button class="calc-act calc-dmg" onclick="calcApply('damage')">DAÑO</button>
+      </div>
+    </div>`;
+  }
 
   // ── Trackers ─────────────────────────────────────
   const visTrackers = char.trackers.filter(t => !G.hidden.trackers[t.id]);
@@ -612,10 +714,10 @@ function render() {
     h += renderFighterCombos();
   }
 
-  // ── Footer: restore hidden items ──────────────────
+  // ── Footer: open recycle bin ──────────────────────
   const totalHidden = hiddenACount + hiddenTCount;
   if (totalHidden > 0) {
-    h += `<button class="footer-btn" onclick="unhideAll()">↺ Mostrar elementos ocultos (${totalHidden})</button>`;
+    h += `<button class="footer-btn" onclick="openTrash()">🗑 Elementos ocultos (${totalHidden})</button>`;
   }
 
   document.getElementById('content').innerHTML = h;
@@ -739,15 +841,158 @@ function clickTDot(id, i) {
   save(); render();
 }
 
-// ── Hide / unhide ─────────────────────────────────────
+// ── Hide / restore (recycle bin) ─────────────────────
 function hideAbility(id) { G.hidden.abilities[id] = true; save(); render(); }
 function hideTracker(id) { G.hidden.trackers[id] = true; save(); render(); }
-function unhideAll() { G.hidden = { abilities:{}, trackers:{} }; save(); render(); }
+
+const SEC_LABELS = { action:'Acción', bonus:'Acción adicional', reaction:'Reacción' };
+
+function openTrash() {
+  const groups = [];
+
+  // Hidden abilities, grouped by action type
+  ['action','bonus','reaction'].forEach(key => {
+    const items = (char.abilities[key] || []).filter(a => G.hidden.abilities[a.id]);
+    if (items.length) {
+      groups.push({
+        label: SEC_LABELS[key],
+        rows: items.map(a => ({
+          name: a.name,
+          fn: `restoreAbility('${a.id}')`
+        }))
+      });
+    }
+  });
+
+  // Hidden trackers
+  const hiddenTr = char.trackers.filter(t => G.hidden.trackers[t.id]);
+  if (hiddenTr.length) {
+    groups.push({
+      label: 'Recursos',
+      rows: hiddenTr.map(t => ({
+        name: t.label,
+        fn: `restoreTracker('${t.id}')`
+      }))
+    });
+  }
+
+  let body = '';
+  if (!groups.length) {
+    body = `<div class="modal-empty">No hay elementos ocultos</div>`;
+  } else {
+    groups.forEach(g => {
+      body += `<div class="trash-group">${esc(g.label)}</div>`;
+      g.rows.forEach(r => {
+        body += `<div class="trash-item">
+          <span class="trash-name">${esc(r.name)}</span>
+          <button class="trash-restore" onclick="${r.fn}">Restaurar</button>
+        </div>`;
+      });
+    });
+  }
+
+  document.getElementById('trash-modal').innerHTML = `
+    <div class="modal-overlay" onclick="if(event.target===this)closeTrash()">
+      <div class="modal-sheet">
+        <div class="modal-head">
+          <span class="modal-title">🗑 Elementos ocultos</span>
+          <button class="modal-close" onclick="closeTrash()">✕</button>
+        </div>
+        <div class="modal-body">${body}</div>
+        ${groups.length ? `<div class="modal-foot">
+          <button class="footer-btn" onclick="restoreAllFromTrash()">↺ Restaurar todo</button>
+        </div>` : ''}
+      </div>
+    </div>`;
+}
+
+function closeTrash() {
+  document.getElementById('trash-modal').innerHTML = '';
+}
+
+function restoreAbility(id) {
+  delete G.hidden.abilities[id];
+  save(); render(); openTrash();
+}
+function restoreTracker(id) {
+  delete G.hidden.trackers[id];
+  save(); render(); openTrash();
+}
+function restoreAllFromTrash() {
+  G.hidden = { abilities:{}, trackers:{} };
+  save(); render(); closeTrash();
+}
 
 function toggleBuff(k) { G.buffs[k] = !G.buffs[k]; save(); render(); }
 
 function chHP(d) {
   G.hp = Math.min(char.hpMax, Math.max(0, (G.hp ?? char.hpCur) + d));
+  save(); render();
+}
+
+// ── HP Calculator ────────────────────────────────────
+function toggleCalc() {
+  calcOpen = !calcOpen;
+  if (!calcOpen) calcExpr = '';
+  render();
+}
+function calcKey(k) {
+  calcExpr += k;
+  updateCalcDisplay();
+}
+function calcBackspace() {
+  calcExpr = calcExpr.slice(0, -1);
+  updateCalcDisplay();
+}
+function calcClear() {
+  calcExpr = '';
+  updateCalcDisplay();
+}
+function calcRoll(die) {
+  const r = 1 + Math.floor(Math.random() * die);
+  if (calcExpr && !/[+\-*/(]\s*$/.test(calcExpr)) calcExpr += '+';
+  calcExpr += r;
+  updateCalcDisplay();
+  toast(`d${die} → ${r}`);
+}
+function updateCalcDisplay() {
+  const el = document.querySelector('.calc-display');
+  if (!el) return;
+  el.textContent = calcExpr || '0';
+  el.classList.toggle('empty', calcExpr.length === 0);
+}
+function calcEvalValue() {
+  if (!calcExpr) return null;
+  if (!/^[0-9+\-*/(). ]+$/.test(calcExpr)) return null;
+  try {
+    const v = Function('"use strict";return (' + calcExpr + ')')();
+    return Number.isFinite(v) ? Math.round(v) : null;
+  } catch(e) { return null; }
+}
+function calcApply(mode) {
+  const v = calcEvalValue();
+  if (v === null || v === 0) { toast('Ingresa un valor'); return; }
+  const hp = G.hp ?? char.hpCur;
+  const tempHp = G.tempHp || 0;
+  const amount = Math.abs(v);
+
+  if (mode === 'heal') {
+    G.hp = Math.min(char.hpMax, hp + amount);
+    toast(`+${amount} PG curados`);
+  } else if (mode === 'temp') {
+    G.tempHp = Math.max(tempHp, amount);
+    toast(`PG temporales: ${G.tempHp}`);
+  } else if (mode === 'damage') {
+    let remaining = amount;
+    if (tempHp > 0) {
+      const absorbed = Math.min(tempHp, remaining);
+      G.tempHp = tempHp - absorbed;
+      remaining -= absorbed;
+    }
+    G.hp = Math.max(0, hp - remaining);
+    toast(`−${amount} daño`);
+  }
+  calcExpr = '';
   save(); render();
 }
 
@@ -770,7 +1015,7 @@ function shortRest() {
 
 function longRest() {
   char.trackers.forEach(t => { G.trackers[t.id] = t.max; });
-  G.hp = char.hpMax; G.buffs = {}; G.round = 1;
+  G.hp = char.hpMax; G.tempHp = 0; G.buffs = {}; G.round = 1;
   finTurn(); toast('Descanso largo — todo recuperado');
 }
 
@@ -833,7 +1078,7 @@ function loadSaved() {
 function importXML(xmlText) {
   try {
     char = parseFC5eXML(xmlText);
-    G = { round:1, hp:char.hpCur, actionUsed:false, bonusUsed:false,
+    G = { round:1, hp:char.hpCur, tempHp:0, actionUsed:false, bonusUsed:false,
           reactionUsed:false, oncePerTurn:{}, trackers:{}, buffs:{},
           hidden:{ abilities:{}, trackers:{} } };
     char.trackers.forEach(t => { G.trackers[t.id] = t.max; });
