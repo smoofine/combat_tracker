@@ -202,6 +202,31 @@ html,body{height:100%;background:var(--bg);color:var(--text);
 .usar-btn{background:var(--blue-bg);border:1px solid var(--blue-border);color:var(--blue);
   border-radius:var(--r-sm);padding:4px 9px;font-size:.7rem;font-weight:600;cursor:pointer;margin-top:4px}
 .usar-btn:active{opacity:.6}
+.usar-btn:disabled{opacity:.35;cursor:not-allowed}
+
+/* Generic collapsible section header */
+.sec-toggle{cursor:pointer}
+.sec-toggle .chev{margin-left:auto;font-size:.65rem;color:var(--muted);transition:transform .15s}
+.sec-toggle.collapsed .chev{transform:rotate(-90deg)}
+
+/* Stepper (level/cost selectors for triggers & spell upcasting) */
+.stepper{display:flex;align-items:center;gap:4px}
+.stepper-btn{background:var(--s2);border:1px solid var(--border2);color:var(--text);
+  width:22px;height:22px;border-radius:50%;cursor:pointer;font-size:.85rem;
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;padding:0}
+.stepper-btn:active{opacity:.6}
+.stepper-btn:disabled{opacity:.3;cursor:not-allowed}
+.stepper-val{font-size:.75rem;font-weight:700;min-width:36px;text-align:center;color:var(--blue)}
+
+/* Trigger cards (Divine Smite, Metamagic, etc.) */
+.trig{background:var(--s1);border:1px solid var(--border);border-radius:var(--r-sm);
+  padding:9px 11px;margin-bottom:5px;position:relative}
+.trig-head{display:flex;align-items:flex-start;gap:9px;margin-bottom:6px}
+.trig-main{flex:1;min-width:0}
+.trig-name{font-weight:600;font-size:.88rem;margin-bottom:1px}
+.trig-desc{font-size:.76rem;color:var(--muted);line-height:1.45}
+.trig-foot{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.trig-dmg{font-size:.78rem;color:var(--amber);font-weight:600}
 
 .div{height:1px;background:var(--border);margin:10px 0}
 .footer-btn{background:var(--s2);border:1px solid var(--border);color:var(--muted);
@@ -295,6 +320,7 @@ function esc(s) {
 let char = null;
 let G = { round:1, hp:null, tempHp:0, actionUsed:false, bonusUsed:false,
   reactionUsed:false, oncePerTurn:{}, trackers:{}, showUtility:false,
+  collapsed:{}, triggerSel:{}, castLevel:{},
   hidden:{ abilities:{}, trackers:{} } };
 
 // Maps populated on each render(), used by toggleDesc()
@@ -312,6 +338,10 @@ const WEAPON_TYPES = new Set([5, 6]); // 5 = melee weapon, 6 = ranged weapon
 const FINESSE_BIT  = 2;
 const ABILITY_KEYS = ['str','dex','con','int','wis','cha'];
 const ABILITY_ES   = ['FUE','DES','CON','INT','SAB','CAR'];
+// Matches any "limited use resource pool" tracker by label, regardless of
+// what the class/character calls it (Concentración, Puntos de Hechicería,
+// Psionic Energy, Superiority Dice, etc.)
+const RE_PC_TRACKER = /concentraci|psionic energy|puntos? de|superiority|hechicer/i;
 
 function parseFC5eXML(xml) {
   // Strip BOM and any leading whitespace/garbage before <?xml or <character
@@ -392,9 +422,11 @@ function parseFC5eXML(xml) {
   // only read the DIRECT child of <character>, not the first descendant match.
   const topSlotsEl = [...ch.children].find(c => c.tagName.toLowerCase() === 'slots');
   const slotsArr = (topSlotsEl?.textContent.trim() || '').replace(/,$/, '').split(',').map(n => parseInt(n) || 0);
+  let maxSpellLevel = 0;
   for (let lvl = 1; lvl <= 9; lvl++) {
     const max = slotsArr[lvl] || 0;
     if (max > 0) {
+      maxSpellLevel = lvl;
       trackers.push({
         id:`sl${lvl}`, label:`Espacios Nv.${lvl}`, type:1, resetType:2,
         max, current:max, isDice:false, diceFmt:null, isSpellSlot:true, spellLevel:lvl
@@ -497,7 +529,7 @@ function parseFC5eXML(xml) {
     [...allFeats, ...itemFeats], totalLevel, mods, prof, weapons, spellEntries, spellDC
   );
 
-  return { name, hpMax, hpCur, cName, cLvl:totalLevel, classInfo, raceName, prof, mods, trackers, abilities, spellDC };
+  return { name, hpMax, hpCur, cName, cLvl:totalLevel, classInfo, raceName, prof, mods, trackers, abilities, spellDC, maxSpellLevel };
 }
 
 // ── Classify a single ability text ──────────────────
@@ -526,6 +558,64 @@ function detectPCCost(text) {
   const m = text.toLowerCase().match(/(?:gastar|gastando|expend)\s+(?:one|1|(\d+))\s+(?:punto|p\.c\.|psionic energy|superiority)/);
   if (!m) return 0;
   return m[1] ? parseInt(m[1]) : 1;
+}
+
+// ═══════════════════════════════════════════════════
+//  "FREE ACTION" / TRIGGERED FEATURE DETECTION
+//  Features that DON'T consume the action economy but
+//  DO spend a resource when a trigger condition is met
+//  (Divine Smite, Metamagic, etc.)
+// ═══════════════════════════════════════════════════
+const RE_TRIGGER_WORD    = /\bcuando\b|\bwhen you\b|inmediatamente (?:despu[eé]s|cuando)|immediately after/i;
+const RE_SLOTSPEND       = /gastar(?:le)?\s+(?:uno de tus |un )?espacios? de conjuro|expend(?:ing)?\s+a\s+spell\s+slot|consumir(?:[aá]s)?\s+.*espacio\s+de\s+conjuro/i;
+const RE_VARIABLE_RES    = /puntos? de hechicer[ií]a|sorcery points?|punto(?:s)? de psi[oó]nica|psionic energy|dados? de superioridad|superiority dice?/i;
+const RE_METAMAGIC_CTX   = /lanzas un conjuro|cast(?:ing)? a (?:sorcerer )?spell/i;
+
+// Parses "Xd Y for/at level 1, plus Zd Y for each level above, up to N d Y"
+// style scaling text (Divine Smite and similar). Returns null if the text
+// doesn't match this pattern.
+function detectScalingDamage(text) {
+  const diceRe = /(\d+)d(\d+)/g;
+  let m, base = null, perLevel = null, max = null;
+  while ((m = diceRe.exec(text))) {
+    const before = text.slice(Math.max(0, m.index - 35), m.index);
+    const after  = text.slice(m.index + m[0].length, m.index + m[0].length + 55);
+    const entry = { n:+m[1], die:+m[2] };
+    if (/m[aá]ximo (?:de|of)\s*$|maximum of\s*$/i.test(before)) {
+      max = entry;
+    } else if (!base && /^[^.]*(?:nivel|level)\s*1\b|^[^.]*1(?:st|°|º)?.?\s*level/i.test(after)) {
+      base = entry;
+    } else if (!perLevel && /^[^.]*(?:por cada nivel|each (?:spell )?level|cada nivel adicional)/i.test(after)) {
+      perLevel = entry;
+    }
+  }
+  if (base && perLevel) {
+    let maxN = base.n + 8 * perLevel.n, maxLevel = 9;
+    if (max) { maxN = max.n; maxLevel = 1 + Math.round((max.n - base.n) / perLevel.n); }
+    return { die: base.die, baseN: base.n, perLevelN: perLevel.n, maxN, maxLevel: Math.min(9, maxLevel) };
+  }
+  return null;
+}
+
+// Classifies a feat that detectAction() couldn't place into action/bonus/
+// reaction as a "trigger" — something that fires off another event
+// (a hit, casting a spell, etc.) and spends a resource instead of a slot
+// in the turn structure.
+function classifyTrigger(text) {
+  if (!RE_TRIGGER_WORD.test(text)) return null;
+
+  if (RE_SLOTSPEND.test(text)) {
+    return { triggerKind:'smite', pc:0, scaling: detectScalingDamage(text), variablePC:false };
+  }
+  const fixedPC = detectPCCost(text);
+  const isMeta  = RE_METAMAGIC_CTX.test(text);
+  if (fixedPC > 0) {
+    return { triggerKind: isMeta ? 'metamagic' : 'resource', pc:fixedPC, scaling:null, variablePC:false };
+  }
+  if (RE_VARIABLE_RES.test(text)) {
+    return { triggerKind: isMeta ? 'metamagic' : 'resource', pc:0, scaling:null, variablePC:true };
+  }
+  return null;
 }
 
 // ── Short description from full text ───────────────
@@ -589,7 +679,7 @@ function estimateDamage(ab) {
 const SKIP_NAMES = /^(description|descripci[oó]n|characteristics|caracter[ií]sticas|starting\s|multiclass|proficiency|equipment|languages|idiomas|age|size|speed|ability score improvement|style$|instructor$|well-rounded|trained for|creating a|heraldic|xanathar)/i;
 
 function buildAbilities(entries, level, mods, prof, weapons, spellEntries, spellDC) {
-  const out = { action:[], bonus:[], reaction:[], utility:[] };
+  const out = { action:[], bonus:[], reaction:[], utility:[], trigger:[] };
 
 
   const attacks = level >= 11 ? 3 : level >= 5 ? 2 : 1;
@@ -660,11 +750,40 @@ function buildAbilities(entries, level, mods, prof, weapons, spellEntries, spell
     if (SKIP_NAMES.test(e.name)) return;
     if (e.text.length < 30) return;
 
-    const type = detectAction(e.name, e.text);
-    if (!type) return;
-
     const key = e.name.toLowerCase();
     if (seen.has(key)) return;
+
+    const pushTrigger = (trig) => {
+      seen.add(key);
+      const desc = shortDesc(e.text);
+      const full = fullDescClean(e.text);
+      const obj = {
+        id:`e${idx}`, name:e.name, desc,
+        full: (full !== desc ? full : null),
+        pc:trig.pc, once:false, source:e.source, spellLevel:0, dc:null,
+        triggerKind: trig.triggerKind, scaling: trig.scaling, variablePC: trig.variablePC
+      };
+      obj.tags = tagAbility(obj);
+      out.trigger.push(obj);
+    };
+
+    // Metamagic options modify a spell being cast — their text often
+    // describes the EFFECT in action-economy terms (e.g. "...the casting
+    // time becomes 1 bonus action"), which would otherwise be mistaken
+    // for the feature's OWN cost. Metamagic always wins.
+    const trig = classifyTrigger(e.text);
+    if (trig && trig.triggerKind === 'metamagic') { pushTrigger(trig); return; }
+
+    const type = detectAction(e.name, e.text);
+
+    if (!type) {
+      // Not tied to the action economy — maybe it's a triggered/"free"
+      // feature (Divine Smite, Stunning Strike, etc.) that spends a resource.
+      if (!trig) return;
+      pushTrigger(trig);
+      return;
+    }
+
     seen.add(key);
 
     const pc    = detectPCCost(e.text);
@@ -810,6 +929,12 @@ function render() {
   const hiddenTCount = char.trackers.length - visTrackers.length;
 
   if (visTrackers.length > 0) {
+    const trCollapsed = !!G.collapsed.trackers;
+    h += `<div class="util-toggle sec-toggle ${trCollapsed?'collapsed':''}" onclick="toggleSection('trackers')">
+      <span>📊 Recursos (${visTrackers.length})</span>
+      <span class="chev">▾</span>
+    </div>`;
+    if (!trCollapsed) {
     h += `<div class="trackers-grid">`;
     visTrackers.forEach(t => {
       const cur = G.trackers[t.id] ?? t.max;
@@ -848,6 +973,7 @@ function render() {
       h += `</div>`;
     });
     h += `</div>`;
+    }
   }
 
   // ── Controls ─────────────────────────────────────
@@ -872,31 +998,39 @@ function render() {
     hiddenACount += all.length - abs.length;
     if (!abs.length) return;
     const slotUsed = G[sec.flag];
+    const collapsed = !!G.collapsed[sec.key];
 
-    h += `<div class="section"><div class="sec-head">
+    h += `<div class="section"><div class="sec-head sec-toggle ${collapsed?'collapsed':''}" onclick="toggleSection('${sec.key}')">
       <div class="sec-dot ${sec.dot}"></div>
-      <span class="sec-name">${sec.label}</span>
-      ${slotUsed ? '<span class="sec-used">usada</span>' : ''}
+      <span class="sec-name">${sec.label} (${abs.length})</span>
+      <span style="margin-left:auto;display:flex;align-items:center;gap:6px">
+        ${slotUsed ? '<span class="sec-used" style="margin-left:0">usada</span>' : ''}
+        <span class="chev">▾</span>
+      </span>
     </div>`;
 
+    if (!collapsed) {
     abs.forEach(ab => {
       const onceUsed = ab.once && G.oncePerTurn[ab.id];
-      const pcTracker = char.trackers.find(t =>
-        /concentraci|psionic energy|puntos de|superiority/i.test(t.label));
+      const pcTracker = char.trackers.find(t => RE_PC_TRACKER.test(t.label));
       const pcCur = pcTracker ? (G.trackers[pcTracker.id] ?? pcTracker.max) : 99;
       const pcOk  = pcCur >= ab.pc;
 
-      // Spell slot availability
-      let slotOk = true, slotTracker = null;
+      // Spell slot availability / upcasting
+      let slotOk = true, slotTracker = null, castLevel = ab.spellLevel;
+      let canUpcast = false, maxCastLevel = ab.spellLevel;
       if (ab.spellLevel > 0) {
-        slotTracker = char.trackers.find(t => t.id === `sl${ab.spellLevel}`);
+        maxCastLevel = Math.max(ab.spellLevel, char.maxSpellLevel || ab.spellLevel);
+        canUpcast = maxCastLevel > ab.spellLevel;
+        castLevel = Math.min(Math.max(G.castLevel[ab.id] ?? ab.spellLevel, ab.spellLevel), maxCastLevel);
+        slotTracker = char.trackers.find(t => t.id === `sl${castLevel}`);
         const slotCur = slotTracker ? (G.trackers[slotTracker.id] ?? slotTracker.max) : 0;
         slotOk = slotTracker ? slotCur > 0 : false;
       }
 
       const dis   = slotUsed || onceUsed || !pcOk || !slotOk;
       const cls2  = slotUsed ? 'used' : (!pcOk || onceUsed || !slotOk ? 'locked' : '');
-      const fn    = dis ? '' : `useAb('${ab.id}','${sec.flag}',${ab.pc},${ab.once},${ab.spellLevel||0})`;
+      const fn    = dis ? '' : `useAb('${ab.id}','${sec.flag}',${ab.pc},${ab.once},${ab.spellLevel>0?castLevel:0})`;
       const srcLabel = ab.source === 'item'   ? '📦 ítem' :
                        ab.source === 'weapon' ? '🗡 arma' :
                        ab.source === 'race'   ? '🧬 raza' :
@@ -906,10 +1040,18 @@ function render() {
       SHORT_DESC[ab.id] = ab.desc;
       if (ab.full) FULL_DESC[ab.id] = ab.full;
 
-      // Cost badge: spell slot > PC/resource > free
+      // Cost badge: spell slot (with upcast stepper) > PC/resource > free
       let costBadge;
       if (ab.spellLevel > 0) {
-        costBadge = `<span class="cost ${slotOk?'c-blue':'c-locked'}">Nv.${ab.spellLevel}</span>`;
+        if (canUpcast) {
+          costBadge = `<div class="stepper" onclick="event.stopPropagation()">
+            <button class="stepper-btn" onclick="setCastLevel('${ab.id}',-1,${ab.spellLevel},${maxCastLevel})" ${castLevel<=ab.spellLevel?'disabled':''}>−</button>
+            <span class="stepper-val" style="${slotOk?'':'color:var(--red)'}">Nv.${castLevel}</span>
+            <button class="stepper-btn" onclick="setCastLevel('${ab.id}',1,${ab.spellLevel},${maxCastLevel})" ${castLevel>=maxCastLevel?'disabled':''}>+</button>
+          </div>`;
+        } else {
+          costBadge = `<span class="cost ${slotOk?'c-blue':'c-locked'}">Nv.${ab.spellLevel}</span>`;
+        }
       } else if (ab.pc > 0) {
         costBadge = `<span class="cost ${pcOk?'c-blue':'c-locked'}">${ab.pc} PC</span>`;
       } else {
@@ -931,8 +1073,14 @@ function render() {
         </div>
       </div>`;
     });
+    }
     h += `</div>`;
   });
+
+  // ── "Mejoras y disparadores" (free/triggered features) ─
+  const trigAll = char.abilities.trigger || [];
+  hiddenACount += trigAll.filter(a => G.hidden.abilities[a.id]).length;
+  h += renderTriggerSection();
 
   // ── Universal combo suggestions ───────────────────
   h += renderSuggestions();
@@ -980,8 +1128,7 @@ function matchesCategory(tags, cat) {
 function abilityAvailable(ab, secFlag) {
   if (G[secFlag]) return false;
   if (ab.once && G.oncePerTurn[ab.id]) return false;
-  const pcTracker = char.trackers.find(t =>
-    /concentraci|psionic energy|puntos de|superiority/i.test(t.label));
+  const pcTracker = char.trackers.find(t => RE_PC_TRACKER.test(t.label));
   const pcCur = pcTracker ? (G.trackers[pcTracker.id] ?? pcTracker.max) : 99;
   if (pcCur < ab.pc) return false;
   if (ab.spellLevel > 0) {
@@ -1113,11 +1260,140 @@ function renderUtilitySection() {
   return h;
 }
 
+function toggleSection(key) { G.collapsed[key] = !G.collapsed[key]; save(); render(); }
+function setCastLevel(id, delta, min, max) {
+  const cur = G.castLevel[id] ?? min;
+  G.castLevel[id] = Math.max(min, Math.min(max, cur + delta));
+  save(); render();
+}
 function toggleUtility() { G.showUtility = !G.showUtility; save(); render(); }
 function useUtility(id, spellLevel) {
   spendSpellSlot(spellLevel);
   save(); render();
   toast('Espacio de conjuro gastado');
+}
+
+// ═══════════════════════════════════════════════════
+//  "MEJORAS Y DISPARADORES" SECTION
+//  Free/triggered features: Divine Smite (scales with the
+//  spell slot spent), Metamagic, and other "spend a resource
+//  when X happens" abilities that don't use the action economy.
+// ═══════════════════════════════════════════════════
+function pcAbbrev(label) {
+  if (!label) return 'recurso';
+  if (/concentraci/i.test(label)) return 'PC';
+  if (/hechicer/i.test(label)) return 'PH';
+  if (/psionic/i.test(label)) return 'dado psi.';
+  if (/superiority|superioridad/i.test(label)) return 'dado sup.';
+  return label;
+}
+
+function renderTriggerSection() {
+  const all = (char.abilities.trigger || []).filter(a => !G.hidden.abilities[a.id]);
+  if (!all.length) return '';
+
+  const collapsed = !!G.collapsed.trigger;
+  let h = `<div class="section"><div class="sec-head sec-toggle ${collapsed?'collapsed':''}" onclick="toggleSection('trigger')">
+    <div class="sec-dot d-combo"></div>
+    <span class="sec-name">⚡ Mejoras y disparadores (${all.length})</span>
+    <span class="chev" style="margin-left:auto">▾</span>
+  </div>`;
+  if (collapsed) return h + `</div>`;
+
+  const pcTracker = char.trackers.find(t => RE_PC_TRACKER.test(t.label));
+  const resLabel = pcAbbrev(pcTracker?.label);
+  const maxSlotLevel = char.maxSpellLevel || 0;
+
+  all.forEach(ab => {
+    SHORT_DESC[ab.id] = ab.desc;
+    if (ab.full) FULL_DESC[ab.id] = ab.full;
+    const srcLabel = ab.source === 'item' ? '📦 ítem' :
+                     ab.source === 'race' ? '🧬 raza' :
+                     ab.source === 'background' ? '🗺 trasfondo' : '';
+    const displayName = ab.triggerKind === 'metamagic' && !/metamagi/i.test(ab.name)
+      ? `🔀 Metamagia: ${ab.name}` : ab.name;
+
+    h += `<div class="trig">
+      <button class="x-btn" onclick="hideAbility('${ab.id}')" title="Ocultar">✕</button>
+      <div class="trig-head">
+        <div class="trig-main">
+          <div class="trig-name">${esc(displayName)}</div>
+          <div class="trig-desc" id="desc-${ab.id}">${esc(ab.desc)}</div>
+          ${ab.full ? `<span class="ab-more" id="more-${ab.id}" onclick="toggleDesc('${ab.id}')">ver más ▾</span>` : ''}
+          ${srcLabel ? `<div class="ab-src">${srcLabel}</div>` : ''}
+        </div>
+      </div>`;
+
+    if (ab.triggerKind === 'smite') {
+      const min = 1;
+      const max = ab.scaling ? Math.min(ab.scaling.maxLevel, maxSlotLevel || ab.scaling.maxLevel) : (maxSlotLevel || 1);
+      const sel = Math.min(Math.max(G.triggerSel[ab.id] ?? min, min), Math.max(max,min));
+      const slotT = char.trackers.find(t => t.id === `sl${sel}`);
+      const slotCur = slotT ? (G.trackers[slotT.id] ?? slotT.max) : 0;
+      const slotOk = slotCur > 0;
+      let dmgLabel = '';
+      if (ab.scaling) {
+        const dice = Math.min(ab.scaling.maxN, ab.scaling.baseN + (sel-1)*ab.scaling.perLevelN);
+        dmgLabel = `+${dice}d${ab.scaling.die}`;
+      }
+
+      h += `<div class="trig-foot">
+        <span class="sugg-slot" style="min-width:auto">Espacio</span>
+        <div class="stepper">
+          <button class="stepper-btn" onclick="setTriggerLevel('${ab.id}',-1,${min},${max})" ${sel<=min?'disabled':''}>−</button>
+          <span class="stepper-val">Nv.${sel}</span>
+          <button class="stepper-btn" onclick="setTriggerLevel('${ab.id}',1,${min},${max})" ${sel>=max?'disabled':''}>+</button>
+        </div>
+        ${dmgLabel ? `<span class="trig-dmg">${dmgLabel}</span>` : ''}
+        <button class="usar-btn" onclick="useSmite('${ab.id}',${sel})" ${slotOk?'':'disabled'} style="margin-top:0;margin-left:auto">Usar</button>
+      </div>`;
+    } else {
+      // metamagic / generic resource trigger
+      if (ab.variablePC) {
+        const cost = Math.min(Math.max(G.triggerSel[ab.id] ?? 1, 1), 9);
+        const cur = pcTracker ? (G.trackers[pcTracker.id] ?? pcTracker.max) : 0;
+        const ok = cur >= cost;
+        h += `<div class="trig-foot">
+          <span class="sugg-slot" style="min-width:auto">Costo</span>
+          <div class="stepper">
+            <button class="stepper-btn" onclick="setTriggerLevel('${ab.id}',-1,1,9)" ${cost<=1?'disabled':''}>−</button>
+            <span class="stepper-val">${cost} ${esc(resLabel)}</span>
+            <button class="stepper-btn" onclick="setTriggerLevel('${ab.id}',1,1,9)" ${cost>=9?'disabled':''}>+</button>
+          </div>
+          <button class="usar-btn" onclick="useTriggerResource('${ab.id}')" ${ok?'':'disabled'} style="margin-top:0;margin-left:auto">Usar</button>
+        </div>`;
+      } else if (ab.pc > 0) {
+        const cur = pcTracker ? (G.trackers[pcTracker.id] ?? pcTracker.max) : 0;
+        const ok = cur >= ab.pc;
+        h += `<div class="trig-foot">
+          <span class="cost ${ok?'c-blue':'c-locked'}">${ab.pc} ${esc(resLabel)}</span>
+          <button class="usar-btn" onclick="useTriggerResource('${ab.id}')" ${ok?'':'disabled'} style="margin-top:0;margin-left:auto">Usar</button>
+        </div>`;
+      }
+    }
+
+    h += `</div>`;
+  });
+
+  return h + `</div>`;
+}
+
+function setTriggerLevel(id, delta, min, max) {
+  const cur = G.triggerSel[id] ?? min;
+  G.triggerSel[id] = Math.max(min, Math.min(max, cur + delta));
+  save(); render();
+}
+function useSmite(id, level) {
+  spendSpellSlot(level);
+  save(); render();
+  toast(`Espacio Nv.${level} gastado`);
+}
+function useTriggerResource(id) {
+  const ab = (char.abilities.trigger || []).find(a => a.id === id);
+  if (!ab) return;
+  const amount = ab.variablePC ? (G.triggerSel[id] ?? 1) : ab.pc;
+  spendResource(amount);
+  save(); render();
 }
 
 // ── Toggle full / short description ─────────────────
@@ -1149,7 +1425,7 @@ function useAb(id, flag, pc, once, spellLevel) {
 }
 
 function spendResource(n) {
-  const t = char.trackers.find(t => /concentraci|psionic energy|superiority/i.test(t.label));
+  const t = char.trackers.find(t => RE_PC_TRACKER.test(t.label));
   if (!t) return;
   G.trackers[t.id] = Math.max(0, (G.trackers[t.id] ?? t.max) - n);
 }
@@ -1179,13 +1455,13 @@ function clickTDot(id, i) {
 function hideAbility(id) { G.hidden.abilities[id] = true; save(); render(); }
 function hideTracker(id) { G.hidden.trackers[id] = true; save(); render(); }
 
-const SEC_LABELS = { action:'Acción', bonus:'Acción adicional', reaction:'Reacción', utility:'Fuera de combate' };
+const SEC_LABELS = { action:'Acción', bonus:'Acción adicional', reaction:'Reacción', utility:'Fuera de combate', trigger:'Mejoras y disparadores' };
 
 function openTrash() {
   const groups = [];
 
   // Hidden abilities, grouped by action type
-  ['action','bonus','reaction','utility'].forEach(key => {
+  ['action','bonus','reaction','utility','trigger'].forEach(key => {
     const items = (char.abilities[key] || []).filter(a => G.hidden.abilities[a.id]);
     if (items.length) {
       groups.push({
@@ -1370,6 +1646,9 @@ function loadSaved() {
         if (!G.hidden) G.hidden = { abilities:{}, trackers:{} };
         if (!G.hidden.abilities) G.hidden.abilities = {};
         if (!G.hidden.trackers) G.hidden.trackers = {};
+        if (!G.collapsed) G.collapsed = {};
+        if (!G.triggerSel) G.triggerSel = {};
+        if (!G.castLevel) G.castLevel = {};
       }
       return true;
     }
@@ -1385,6 +1664,7 @@ function importXML(xmlText) {
     char = parseFC5eXML(xmlText);
     G = { round:1, hp:char.hpCur, tempHp:0, actionUsed:false, bonusUsed:false,
           reactionUsed:false, oncePerTurn:{}, trackers:{}, showUtility:false,
+          collapsed:{}, triggerSel:{}, castLevel:{},
           hidden:{ abilities:{}, trackers:{} } };
     char.trackers.forEach(t => { G.trackers[t.id] = t.max; });
     save();
