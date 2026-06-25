@@ -130,6 +130,16 @@ html,body{height:100%;background:var(--bg);color:var(--text);
 .tnum-btn:active{opacity:.6}
 .tcard-dice{font-size:.95rem;font-weight:600;color:var(--amber);letter-spacing:.02em;margin-bottom:3px}
 .tcard-reset{font-size:.68rem;color:var(--hint)}
+.pool-row{display:flex;gap:4px;margin-top:5px;align-items:center}
+.pool-input{width:40px;background:var(--s2);border:1px solid var(--border2);color:var(--text);
+  border-radius:6px;padding:3px 4px;font-size:.78rem;text-align:center;
+  -moz-appearance:textfield}
+.pool-input::-webkit-outer-spin-button,.pool-input::-webkit-inner-spin-button{
+  -webkit-appearance:none;margin:0}
+.pool-btn{background:var(--blue-bg);border:1px solid var(--blue-border);color:var(--blue);
+  border-radius:6px;padding:3px 0;font-size:.7rem;font-weight:600;cursor:pointer;flex:1;
+  text-align:center}
+.pool-btn:active{opacity:.6}
 .x-btn{position:absolute;top:6px;right:6px;width:16px;height:16px;border-radius:50%;
   background:var(--s3);border:none;color:var(--hint);font-size:.62rem;cursor:pointer;
   display:flex;align-items:center;justify-content:center;line-height:1;padding:0}
@@ -191,6 +201,11 @@ html,body{height:100%;background:var(--bg);color:var(--text);
 .sugg-name{font-weight:500}
 .sugg-extra{font-size:.72rem;color:var(--muted)}
 .sugg-empty{font-size:.78rem;color:var(--hint);font-style:italic}
+.sugg-total{display:flex;align-items:center;justify-content:space-between;gap:8px;
+  margin-top:6px;padding-top:6px;border-top:1px dashed var(--border2);
+  cursor:pointer;font-size:.8rem;font-weight:600;color:var(--blue)}
+.sugg-total:active{opacity:.6}
+.sugg-total-val{color:var(--amber)}
 
 /* Utility / out-of-combat section */
 .util-toggle{display:flex;align-items:center;gap:7px;cursor:pointer;
@@ -320,12 +335,14 @@ function esc(s) {
 let char = null;
 let G = { round:1, hp:null, tempHp:0, actionUsed:false, bonusUsed:false,
   reactionUsed:false, oncePerTurn:{}, trackers:{}, showUtility:false,
-  collapsed:{}, triggerSel:{}, castLevel:{},
+  collapsed:{}, triggerSel:{}, castLevel:{}, poolAmt:{},
   hidden:{ abilities:{}, trackers:{} } };
 
 // Maps populated on each render(), used by toggleDesc()
 let SHORT_DESC = {};
 let FULL_DESC  = {};
+// Populated fresh by renderSuggestions(); maps combo-button index -> steps
+let SUGGESTION_COMBOS = [];
 
 // HP calculator (not persisted — resets each session)
 let calcOpen = false;
@@ -338,10 +355,93 @@ const WEAPON_TYPES = new Set([5, 6]); // 5 = melee weapon, 6 = ranged weapon
 const FINESSE_BIT  = 2;
 const ABILITY_KEYS = ['str','dex','con','int','wis','cha'];
 const ABILITY_ES   = ['FUE','DES','CON','INT','SAB','CAR'];
-// Matches any "limited use resource pool" tracker by label, regardless of
-// what the class/character calls it (Concentración, Puntos de Hechicería,
-// Psionic Energy, Superiority Dice, etc.)
-const RE_PC_TRACKER = /concentraci|psionic energy|puntos? de|superiority|hechicer/i;
+// ═══════════════════════════════════════════════════
+//  RESOURCE-POOL REGISTRY
+//  Replaces the old single broad RE_PC_TRACKER lookup, which picked
+//  the FIRST tracker matching ANY resource-sounding keyword anywhere on
+//  the whole character — fine for a single-resource character, but wrong
+//  the moment a character has two or more such pools.
+//
+//  Confirmed wrong on real data: Bo (Fighter/Psi Warrior) has both a
+//  "Superiority Die" tracker and a "Psionic Energy" tracker. His Psionic
+//  Power reaction (pc:1, text mentions "Psionic Energy") was silently
+//  decrementing Superiority Die instead, because that tracker happens to
+//  sit earlier in char.trackers. Multiclass casters (Dorym: Paladín +
+//  Hechicero) have the same risk between Canalizar Divinidad and Puntos
+//  de Hechicería.
+//
+//  Fix: every named FC5e resource pool gets its own entry here. Ability
+//  text is scanned (via detectResKey) for the SPECIFIC phrase that names
+//  which pool it spends from, and that key is stored on the ability
+//  (ab.resKey) at parse time. findResTracker(resKey) then looks up the
+//  tracker using ONLY that pool's own narrow regex — never "whichever
+//  matches first". Order below matters only as a tie-breaker when an
+//  ability's text happens to mention more than one pool's phrasing (rare);
+//  more specific patterns are listed first.
+// Display abbreviations match what was already shown before this fix
+// (pcAbbrev used to special-case "Concentración" → "PC" literally — kept
+// as-is here to avoid a gratuitous UI text change). "Canalizar Div." is
+// spelled out instead of abbreviated to "CD" because that exact badge
+// text is already used elsewhere for spell save DC (ab.dc) — reusing it
+// here would visually collide with that badge on the same ability card.
+// variableEligible: whether this pool has a genuine "spend a VARIABLE
+// amount" mechanic in 5e (Twinned Spell scales with target count, Psionic
+// power/Maneuvers can burn multiple dice, etc). Sorcery/psionic/
+// superiority do; Monk Focus and Channel Divinity options are always a
+// flat 1-per-use in actual game rules, so they're excluded here — see the
+// classifyTrigger() comment below for why this distinction matters.
+const RESOURCE_TYPES = [
+  { key:'sorcery',         abbrev:'PH',            textRe: /puntos? de hechicer[ií]a|sorcery points?/i,                          trackerRe: /hechicer|sorcery/i,                 variableEligible:true },
+  { key:'psionic',         abbrev:'dado psi.',      textRe: /psionic energy|punto(?:s)? de psi[oó]nica/i,                          trackerRe: /psionic energy|psi[oó]nica/i,       variableEligible:true },
+  { key:'superiority',     abbrev:'dado sup.',      textRe: /superiority dice?|dados? de superioridad/i,                           trackerRe: /superiority|superioridad/i,         variableEligible:true },
+  { key:'focus',           abbrev:'PC',             textRe: /puntos? de (?:concentraci[oó]n|enfoque)|focus points?/i,              trackerRe: /concentraci|enfoque|focus/i,        variableEligible:false },
+  { key:'channeldivinity', abbrev:'Canalizar Div.', textRe: /(?:usar|utilizar)\s+(?:tu\s+)?canalizar divinidad|use your channel divinity/i, trackerRe: /canalizar divinidad|channel divinity/i, variableEligible:false },
+];
+
+// Finds which (if any) named resource pool an ability's text refers to.
+// Returns the resKey string, or null if the text doesn't name a pool we
+// recognize (e.g. truly unnamed/generic homebrew resources) — callers
+// fall back to the legacy broad-match behavior in that case, same as
+// before this fix, so previously-working but unnamed cases don't regress.
+//
+// onlyVariableEligible restricts the search to pools that can plausibly
+// have a variable (player-chosen) cost — see classifyTrigger().
+function detectResKey(text, onlyVariableEligible) {
+  for (const r of RESOURCE_TYPES) {
+    if (onlyVariableEligible && !r.variableEligible) continue;
+    if (r.textRe.test(text)) return r.key;
+  }
+  return null;
+}
+
+// Legacy broad regex — kept ONLY as the last-resort fallback for
+// abilities whose text doesn't name a specific known pool (detectResKey
+// returns null). Equivalent to the original RE_PC_TRACKER behavior.
+const RE_PC_TRACKER_FALLBACK = /concentraci|psionic energy|puntos? de|superiority|hechicer/i;
+
+// Resolves the actual tracker object for a given resKey, narrowly. Falls
+// back to the old "first resource-looking tracker" behavior only when
+// resKey is null/unrecognized — see comment above.
+function findResTracker(resKey) {
+  if (resKey) {
+    const def = RESOURCE_TYPES.find(r => r.key === resKey);
+    if (def) {
+      const t = char.trackers.find(t => def.trackerRe.test(t.label));
+      if (t) return t;
+    }
+  }
+  return char.trackers.find(t => RE_PC_TRACKER_FALLBACK.test(t.label));
+}
+
+// Display abbreviation for a resource cost badge. Looks up the known
+// abbrev for resKey first; falls back to the tracker's own label (the old
+// pcAbbrev() behavior for unrecognized/homebrew pools) when resKey is
+// null/unmatched, then to a generic placeholder if there's no tracker at all.
+function resAbbrev(resKey, fallbackLabel) {
+  const def = RESOURCE_TYPES.find(r => r.key === resKey);
+  if (def) return def.abbrev;
+  return fallbackLabel || 'recurso';
+}
 
 function parseFC5eXML(xml) {
   // Strip BOM and any leading whitespace/garbage before <?xml or <character
@@ -434,6 +534,61 @@ function parseFC5eXML(xml) {
     }
   }
 
+  // ── Pact Magic slots (Warlock) ──────────────────────
+  // Pact Magic is a SEPARATE, independently-recharging slot pool — by RAW
+  // it's explicitly excluded from the normal multiclass spell-slot table,
+  // confirmed empirically: a pure 20th-level Warlock's top-level <slots>
+  // above reads ALL ZEROS. The real slots live on the <class> element's
+  // OWN <slots>/<slotsreset> pair instead (slotsreset:1 = short rest —
+  // same 1=short/2=long convention used by <tracker><resetType> elsewhere).
+  // Non-Pact classes (checked against Dorym, a real multiclass caster)
+  // never carry a <slotsreset> tag at all, so this block is a no-op for
+  // them — only classes that genuinely have an independent recharge cycle
+  // light it up.
+  //
+  // Kept in a SEPARATE tracker id namespace (pactsl#, not sl#) rather than
+  // merged into the regular sl# trackers: a Warlock/caster multiclass can
+  // have a Pact slot and a normal slot at the very same nominal level
+  // simultaneously (e.g. both 1st level), and those are two genuinely
+  // distinct pools on a real character sheet — collapsing them into one
+  // shared count would silently merge a short-rest pool with a long-rest
+  // one. pactInfoByClassIdx lets the spell-parsing loop below tag which
+  // spells should draw from the Pact pool instead of the normal one.
+  const pactInfoByClassIdx = {};
+  classInfo.forEach((ci, classIdx) => {
+    const resetEl = [...ci.el.children].find(c => c.tagName.toLowerCase() === 'slotsreset');
+    const resetType = resetEl ? (parseInt(resetEl.textContent) || 2) : 0;
+    if (resetType <= 0) return; // no independent recharge cycle declared — not a Pact-style pool
+
+    const ownSlotsEl = [...ci.el.children].find(c => c.tagName.toLowerCase() === 'slots');
+    const ownArr = (ownSlotsEl?.textContent.trim() || '').replace(/,$/, '').split(',').map(n => parseInt(n) || 0);
+    // RAW Pact Magic only ever has ONE active slot level at a time (it's
+    // replaced wholesale as the Warlock levels up), but scan for the
+    // highest non-zero entry rather than assuming a fixed index, in case
+    // some homebrew "spread" variant ever populates more than one.
+    let level = 0, max = 0;
+    for (let lvl = 1; lvl <= 9; lvl++) {
+      if ((ownArr[lvl] || 0) > 0) { level = lvl; max = ownArr[lvl]; }
+    }
+    if (level === 0) return;
+
+    pactInfoByClassIdx[classIdx] = { level, max, resetType };
+    // Folded into the SAME ceiling as normal slots (not tracked separately)
+    // since every place that reads char.maxSpellLevel to cap an upcast
+    // stepper still looks the resulting level up via the 'sl' prefix only
+    // (never 'pactsl') — so on a pure Warlock or any character without
+    // overlapping pools this is exactly right, and on a hypothetical
+    // Warlock/caster multiclass (no test data for this combo yet) the
+    // worst case is a normal-spell upcast stepper that *displays* one
+    // extra selectable level than the character truly has, which simply
+    // shows as locked (no tracker found) rather than mis-spending anything.
+    maxSpellLevel = Math.max(maxSpellLevel, level);
+    trackers.push({
+      id:`pactsl${level}`, label:`Espacios de Pacto Nv.${level}`, type:1, resetType,
+      max, current:max, isDice:false, diceFmt:null, isSpellSlot:true, spellLevel:level, isPactMagic:true
+    });
+  });
+
   // ── Feats: direct <feat> children of <class> = curated/selected list ──
   // (autolevel dumps EVERY subclass option; direct children only contain
   //  what was actually chosen for this character)
@@ -508,6 +663,8 @@ function parseFC5eXML(xml) {
       };
     }
 
+    const pactLevel = pactInfoByClassIdx[classIdx]?.level || null;
+
     direct.forEach((s, i) => {
       const sName = $(s,'name'), sText = $(s,'text');
       if (!sName || !sText) return;
@@ -520,7 +677,9 @@ function parseFC5eXML(xml) {
         range: $(s,'range'),
         duration: $(s,'duration'),
         ritual: $(s,'ritual') === '1',
-        abilityIdx
+        rolls: $$(s,'roll').map(r => r.textContent.trim()).filter(Boolean),
+        abilityIdx,
+        pactSlotLevel: pactLevel
       });
     });
   });
@@ -528,6 +687,23 @@ function parseFC5eXML(xml) {
   const abilities = buildAbilities(
     [...allFeats, ...itemFeats], totalLevel, mods, prof, weapons, spellEntries, spellDC
   );
+
+  // ── Custom resource pools (Lay on Hands, item charges, etc.) ──
+  // Detected independently of action-economy classification, since the
+  // same feat (e.g. "Imponer las Manos") is both a usable ability AND the
+  // definition of a separate point pool.
+  const poolSeen = new Set();
+  [...allFeats, ...itemFeats].forEach((e, i) => {
+    const key = e.name.toLowerCase();
+    if (poolSeen.has(key)) return;
+    const pool = detectResourcePool(e.name, e.text, classInfo, totalLevel, mods, prof);
+    if (!pool) return;
+    poolSeen.add(key);
+    trackers.push({
+      id:`pool${i}`, label: pool.label, type:1, resetType: pool.resetType,
+      max: pool.max, current: pool.max, isDice:false, diceFmt:null, isPool:true
+    });
+  });
 
   return { name, hpMax, hpCur, cName, cLvl:totalLevel, classInfo, raceName, prof, mods, trackers, abilities, spellDC, maxSpellLevel };
 }
@@ -554,10 +730,17 @@ function detectSpellTime(time) {
 }
 
 // ── PC / resource cost detection ────────────────────
+// "Channel Divinity" usage was previously excluded here because the old
+// single shared RE_PC_TRACKER lookup couldn't tell two resource pools
+// apart on the same character (see RESOURCE_TYPES above for the full
+// story — confirmed colliding with Puntos de Hechicería on Dorym, a
+// Paladín/Hechicero). Now that every ability carries its own resKey and
+// findResTracker() looks up ONLY that pool, it's safe to detect again.
 function detectPCCost(text) {
   const m = text.toLowerCase().match(/(?:gastar|gastando|expend)\s+(?:one|1|(\d+))\s+(?:punto|p\.c\.|psionic energy|superiority)/);
-  if (!m) return 0;
-  return m[1] ? parseInt(m[1]) : 1;
+  if (m) return m[1] ? parseInt(m[1]) : 1;
+  if (/(?:usar|utilizar)\s+(?:tu\s+)?canalizar divinidad|use your channel divinity/i.test(text)) return 1;
+  return 0;
 }
 
 // ═══════════════════════════════════════════════════
@@ -567,9 +750,61 @@ function detectPCCost(text) {
 //  (Divine Smite, Metamagic, etc.)
 // ═══════════════════════════════════════════════════
 const RE_TRIGGER_WORD    = /\bcuando\b|\bwhen you\b|inmediatamente (?:despu[eé]s|cuando)|immediately after/i;
-const RE_SLOTSPEND       = /gastar(?:le)?\s+(?:uno de tus |un )?espacios? de conjuro|expend(?:ing)?\s+a\s+spell\s+slot|consumir(?:[aá]s)?\s+.*espacio\s+de\s+conjuro/i;
-const RE_VARIABLE_RES    = /puntos? de hechicer[ií]a|sorcery points?|punto(?:s)? de psi[oó]nica|psionic energy|dados? de superioridad|superiority dice?/i;
+const RE_SLOTSPEND_SRC   = 'gastar(?:le)?\\s+(?:uno de tus |un )?espacios? de conjuro|expend(?:ing)?\\s+a\\s+spell\\s+slot|consumir(?:[aá]s)?\\s+.*espacio\\s+de\\s+conjuro';
+// (RE_VARIABLE_RES removed — superseded by detectResKey()/RESOURCE_TYPES above,
+// which both detects AND identifies which specific pool an ability draws from)
 const RE_METAMAGIC_CTX   = /lanzas un conjuro|cast(?:ing)? a (?:sorcerer )?spell/i;
+
+// Same phrase as RE_SLOTSPEND_SRC, but rejects matches preceded by a
+// negation ("sin gastar"/"without expending") within a short window.
+// Without this, free innate-casting traits (Drow High Magic, Fey
+// Teleportation — "cast X once, sin gastar un espacio de conjuro") get
+// misclassified as Divine-Smite-style triggers, since they're the OPPOSITE:
+// spending NO slot at all, not spending one to add bonus damage.
+function hasRealSlotSpend(text) {
+  const re = new RegExp(RE_SLOTSPEND_SRC, 'gi');
+  let m;
+  while ((m = re.exec(text))) {
+    const before = text.slice(Math.max(0, m.index - 20), m.index);
+    if (/\b(sin|without)\b/i.test(before)) continue;
+    return true;
+  }
+  return false;
+}
+
+// "You can cast spell X once with this trait, and regain the ability when
+// you finish a short/long rest" — the standard racial innate-spellcasting
+// pattern (Drow High Magic, Tiefling/Genie lineages, Fey Ancestry variants,
+// etc). Not a spell-slot spend, not a fixed/variable point cost, not the
+// "N times your level" pool formula — none of our other detectors catch
+// it, so today these abilities show up with no usage tracking at all.
+//
+// Requires "cast"/"lanzar" near "once"/"una vez" (not just "once" anywhere
+// in the text) — caught during testing against the Test_PC druid corpus:
+// several HB/TP subclass features use "...a number of times equal to your
+// Wisdom modifier (minimum of once), and you regain..." which has no
+// casting verb at all but would otherwise false-positive on a bare
+// once+regain+rest scan, and wrongly collapse a scaling pool into a
+// 1-charge tracker. Returns a resetType (1=short, 2=long), or null.
+const RE_INNATE_SPELL_ANCHOR = /\bcast\b[\s\S]{0,60}?\bonce\b|\blanzar\b[\s\S]{0,60}?\buna vez\b/gi;
+
+function detectInnateSpellUse(text) {
+  const re = new RegExp(RE_INNATE_SPELL_ANCHOR.source, 'gi');
+  let m;
+  while ((m = re.exec(text))) {
+    const isSpanish = /una vez/i.test(m[0]);
+    const onceIdx = text.toLowerCase().indexOf(isSpanish ? 'una vez' : 'once', m.index);
+    const before = text.slice(Math.max(0, onceIdx - 20), onceIdx);
+    if (/minimum of\s*$|m[ií]nimo de\s*$/i.test(before)) continue; // variable-size pool, not innate cast
+    const after = text.slice(m.index, m.index + 300);
+    const restMatch = after.match(/\bregain\b[\s\S]{0,80}?\b(short|long)\s+rest|\brecuperas\b[\s\S]{0,80}?\bdescanso\s+(corto|largo)/i);
+    if (restMatch) {
+      const word = (restMatch[1] || restMatch[2] || '').toLowerCase();
+      return { resetType: (word === 'short' || word === 'corto') ? 1 : 2 };
+    }
+  }
+  return null;
+}
 
 // Parses "Xd Y for/at level 1, plus Zd Y for each level above, up to N d Y"
 // style scaling text (Divine Smite and similar). Returns null if the text
@@ -601,20 +836,190 @@ function detectScalingDamage(text) {
 // reaction as a "trigger" — something that fires off another event
 // (a hit, casting a spell, etc.) and spends a resource instead of a slot
 // in the turn structure.
+// Same phrase as RE_SLOTSPEND_SRC, used to catch the NEGATED case (free
+// innate casting — Star Map, Draconic Gift's Fog/Invisibility options,
+// Drow High Magic) even though hasRealSlotSpend() correctly rejects it as
+// a Smite-style trigger. Their actual usage limits vary too much to model
+// generically yet (fixed 1, proficiency-bonus-sized, tied to another
+// resource's duration) — but without this, they'd vanish from the trigger
+// list entirely (confirmed against 5 real Test_PC druid features:
+// Star Map, Draconic Gift, Gift of the Green, Walker in Dreams, Verdant
+// Grasp), which is worse than showing them untracked.
+const RE_FREE_INNATE_CAST = /(?:cast|lanza(?:r|s)?)[\s\S]{0,80}?(?:without expending|sin gastar)[\s\S]{0,30}?(?:spell slot|espacio de conjuro)/i;
+
 function classifyTrigger(text) {
+  // Checked BEFORE the RE_TRIGGER_WORD gate below: "cast X once without
+  // expending a spell slot" is a strong enough standalone signal on its
+  // own — it doesn't need "cuando"/"when you" framing to mean something.
+  // Confirmed needed on real data: Warlock's Mystic Arcanum is curated as
+  // 4 near-identical feats (6th/7th/8th/9th tier). Only the 6th-tier entry
+  // happens to ALSO contain a trailing "...when you finish a long rest"
+  // sentence (a scaling note that mentions the other 3 tiers); the 7th/8th
+  // /9th tier entries are shorter and never say "cuando"/"when you" at
+  // all. Gating on RE_TRIGGER_WORD first meant 3 of the 4 real tiers were
+  // silently dropped (matched neither detectAction nor classifyTrigger),
+  // even though their matching trackers were already being synthesized
+  // correctly by detectResourcePool — the ability just never displayed.
+  if (RE_FREE_INNATE_CAST.test(text)) {
+    return { triggerKind:'free', pc:0, scaling:null, variablePC:false, resKey:null };
+  }
   if (!RE_TRIGGER_WORD.test(text)) return null;
 
-  if (RE_SLOTSPEND.test(text)) {
-    return { triggerKind:'smite', pc:0, scaling: detectScalingDamage(text), variablePC:false };
+  if (hasRealSlotSpend(text)) {
+    return { triggerKind:'smite', pc:0, scaling: detectScalingDamage(text), variablePC:false, resKey:null };
   }
   const fixedPC = detectPCCost(text);
   const isMeta  = RE_METAMAGIC_CTX.test(text);
   if (fixedPC > 0) {
-    return { triggerKind: isMeta ? 'metamagic' : 'resource', pc:fixedPC, scaling:null, variablePC:false };
+    // detectPCCost already required an explicit spend verb ("gastar"/
+    // "expend"/"usar Canalizar Divinidad"), so any resKey it implies is safe.
+    return { triggerKind: isMeta ? 'metamagic' : 'resource', pc:fixedPC, scaling:null, variablePC:false, resKey: detectResKey(text) };
   }
-  if (RE_VARIABLE_RES.test(text)) {
-    return { triggerKind: isMeta ? 'metamagic' : 'resource', pc:0, scaling:null, variablePC:true };
+  // Fallback: no fixed count found, but the text might still describe a
+  // variable-cost spend (Conjuro Gemelo/Twinned Spell scales with target
+  // level, etc). Restricted to variableEligible pools ONLY — confirmed
+  // false-positive on Rhyo otherwise: "Metabolismo Asombroso" mentions
+  // "puntos de concentración" but only to describe REGAINING them
+  // ("puedes recuperar todos los puntos... gastados"), not spending any.
+  // There's no real 5e mechanic for variable-cost Focus/Channel Divinity
+  // spends, so excluding those two keys here removes the false trigger
+  // without needing fragile spend-vs-regain verb detection on free text.
+  const resKey = detectResKey(text, /*onlyVariableEligible=*/true);
+  if (resKey) {
+    return { triggerKind: isMeta ? 'metamagic' : 'resource', pc:0, scaling:null, variablePC:true, resKey };
   }
+  return null;
+}
+
+// ═══════════════════════════════════════════════════
+//  CUSTOM RESOURCE POOL / CHARGES DETECTION
+//  Features like Lay on Hands ("a pool equal to five times
+//  your paladin level") or items with N charges become extra
+//  trackers, independent of their action-economy classification.
+// ═══════════════════════════════════════════════════
+const NUM_WORDS = { uno:1,dos:2,tres:3,cuatro:4,cinco:5,seis:6,siete:7,ocho:8,nueve:9,diez:10,
+  one:1,two:2,three:3,four:4,five:5,six:6,seven:7,eight:8,nine:9,ten:10 };
+
+// Multiplier × class-level pool (e.g. "five times your paladin level").
+// Guard: the match must appear in a USES context (preceded by "pool", "uses",
+// "number of", or "reserva" within 120 chars) — confirmed false-positive
+// without this on Doomsday Device (HB Artificer), where "five times your
+// artificer level" describes the HP of a constructed device, and "pool"
+// appears later as flavor text ("a pool of acid"). The nearby-word check
+// replaces the old whole-text RE_POOL_WORD scan.
+const RE_POOL_LEVEL = /(\d+|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|one|two|three|four|five|six|seven|eight|nine|ten)\s*(?:veces|times|[×x])\s*(?:tu nivel de\s+([a-záéíóúñ]+)|your\s+([a-z]+)\s+level)/i;
+const RE_POOL_CONTEXT = /\b(?:pool|reserva|piscina|uses?|usos?|number of charges|cargas?)\b/i;
+
+// Charges ("has N charges"). Guard: if "this item"/"this weapon"/"this armor"/
+// "this device" immediately precedes the match, it's describing an ITEM's
+// stats inside a feat's d20 table, not the feature's own uses — confirmed on
+// Expanded Contraptions (HB Artificer): "This item has 4 charges".
+// Intentionally does NOT block "the staff has 10 charges" or generic "the
+// [noun] has N charges" — those are legitimate item pools (Staff of the
+// Woodlands). Only "this [category]" (pointing to a table entry) is excluded.
+const RE_CHARGES = /(?:tiene|has|with)\s+(\d+)\s+(?:cargas?|charges)/i;
+const RE_CHARGES_ITEM_PREFIX = /\bthis\s+(?:item|weapon|armor|device|cantrip|tool)\s*$/i;
+
+// "N times equal to your [ability] modifier (minimum of once)" and
+// "N times equal to your proficiency bonus" — confirmed needed against
+// ALL six characters in the corpus: Bo (STR/CON/WIS), Rhyo (WIS/CON
+// via Focus), Dorym (CHA), Test_PC Druid (WIS/PB), Warlock (CHA/PB),
+// and 38 feats in the Artificer (INT/PB). Currently NONE of these produce
+// a tracker unless they also happen to have a native <tracker> element —
+// the feature displays but with no visible usage limit.
+//
+// "minimum of once"/"minimum of 1" guard prevents synthesizing a tracker
+// for abilities that just mention "healing equal to your INT modifier" or
+// "damage equal to your CHA modifier" — those contain the same phrase
+// structure but are NOT pool-size formulas.
+const RE_SCALING_BY_MOD = /number of times equal to(?:\s+(?:twice|double|half))?\s+your\s+(strength|dexterity|constitution|intelligence|wisdom|charisma|str|dex|con|int|wis|cha)\s+modifier|veces igual a tu modificador de\s+(fuerza|destreza|constituci[oó]n|inteligencia|sabidur[ií]a|carisma)/i;
+const RE_SCALING_BY_PROF = /number of times equal to your proficiency bonus|veces igual a tu bono de competencia/i;
+const RE_SCALING_REGAIN = /\bregain(?:\s+all)?\s+(?:expended\s+)?uses|\brecuperas?\s+(?:todos\s+los\s+usos|las\s+cargas?)/i;
+
+// Multiplier modifiers for "twice/double/half" variants
+const RE_SCALING_MULT = /\b(twice|double)\b/i;
+const RE_SCALING_HALF = /\bhalf\b/i;
+
+const ABILITY_MOD_NAME = {
+  strength:'str', str:'str', fuerza:'str',
+  dexterity:'dex', dex:'dex', destreza:'dex',
+  constitution:'con', con:'con', 'constituci\u00f3n':'con', constitucion:'con',
+  intelligence:'int', int:'int', inteligencia:'int',
+  wisdom:'wis', wis:'wis', 'sabidur\u00eda':'wis', sabiduria:'wis',
+  charisma:'cha', cha:'cha', carisma:'cha'
+};
+
+function stripAccents(s) {
+  return (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+}
+
+// Returns a tracker-shaped object, or null if no pool/charges pattern found.
+// mods and prof are passed through from parseFC5eXML to resolve scaling formulas.
+function detectResourcePool(name, text, classInfo, totalLevel, mods, prof) {
+  const resetType = /short rest|descanso corto/i.test(text) ? 1 : 2;
+
+  // ── Multiplier × level (e.g. "five times your paladin level") ──────
+  const m1 = text.match(RE_POOL_LEVEL);
+  if (m1) {
+    // Require pool-context word within 120 chars of the match (not anywhere
+    // in the full feat text, to avoid matching HP formulas of summoned creatures)
+    const nearCtx = text.slice(Math.max(0, m1.index - 120), m1.index + 120);
+    if (RE_POOL_CONTEXT.test(nearCtx)) {
+      const raw = m1[1].toLowerCase();
+      const mult = NUM_WORDS[raw] ?? parseInt(raw);
+      const classWord = stripAccents(m1[2] || m1[3] || '');
+      let lvl = totalLevel;
+      const match = classInfo.find(ci => {
+        const cw = stripAccents(ci.name).trim();
+        return cw && (cw.includes(classWord) || classWord.includes(cw));
+      });
+      if (match) lvl = match.level;
+      else if (classInfo.length === 1) lvl = classInfo[0].level;
+      const max = mult * lvl;
+      if (max > 0) return { label:name, max, resetType, isPool:true };
+    }
+  }
+
+  // ── N charges on an item/feature ────────────────────────────────
+  const m2 = text.match(RE_CHARGES);
+  if (m2) {
+    const before30 = text.slice(Math.max(0, m2.index - 30), m2.index);
+    if (!RE_CHARGES_ITEM_PREFIX.test(before30)) {
+      const max = parseInt(m2[1]);
+      if (max > 0) return { label:name, max, resetType, isPool:true };
+    }
+  }
+
+  // ── N times equal to [ability modifier / proficiency bonus] ─────
+  // Only synthesize a pool when the text also contains a regain-uses
+  // phrase ("regain all expended uses when you finish a rest") — this
+  // guards against false matches where "N times equal to your X modifier"
+  // describes a damage bonus or healing amount, not a use-count formula.
+  if (mods && RE_SCALING_REGAIN.test(text)) {
+    const mMod = text.match(RE_SCALING_BY_MOD);
+    if (mMod) {
+      const rawName = stripAccents(mMod[1] || mMod[2] || '');
+      const key = ABILITY_MOD_NAME[rawName];
+      if (key && mods[key] !== undefined) {
+        // "twice/double your X modifier" or "half your X modifier" variants
+        const multStr = text.slice(Math.max(0, mMod.index - 30), mMod.index);
+        let base = mods[key];
+        if (RE_SCALING_MULT.test(multStr)) base = base * 2;
+        else if (RE_SCALING_HALF.test(multStr)) base = Math.ceil(base / 2);
+        const max = Math.max(1, base);   // "minimum of once" → at least 1
+        return { label:name, max, resetType, isPool:true };
+      }
+    }
+    const mProf = text.match(RE_SCALING_BY_PROF);
+    if (mProf && prof) {
+      return { label:name, max: Math.max(1, prof), resetType, isPool:true };
+    }
+  }
+
+  // ── Innate spellcasting (racial "cast once, regain on rest") ─────
+  const innate = detectInnateSpellUse(text);
+  if (innate) return { label:name, max:1, resetType:innate.resetType, isPool:true };
+
   return null;
 }
 
@@ -645,7 +1050,10 @@ const TAG_RULES = [
 
 // Condition keywords (used both for "control" — inflicting — and for
 // detecting "cure" abilities, which remove these same conditions).
-const RE_CONDITION = /aturdid|paraliz|asustad[oa]|incapacitad|derribad[oa]|apresad[oa]|ralentiz|hechizad[oa]|cegad[oa]|ensordecid[oa]|envenenad[oa]|stunned|paralyz|frightened|incapacitated|prone|restrained|grappled|slowed|charmed|blinded|deafened|poisoned|petrif/i;
+// NOTE: "invisible"/"invisibility" deliberately excluded — invisibility is
+// almost always a buff (defense/utility), not an offensive control effect,
+// so adding it here would misclassify the Invisibility spell as "control".
+const RE_CONDITION = /aturdid|paraliz|asustad[oa]|incapacitad|derribad[oa]|apresad[oa]|ralentiz|hechizad[oa]|cegad[oa]|ensordecid[oa]|envenenad[oa]|agotamiento|inconscien|stunned|paralyz|frightened|incapacitated|prone|restrained|grappled|slowed|charmed|blinded|deafened|poisoned|petrif|exhaust|unconscious/i;
 // "ends/cures/removes a condition" — these are SUPPORT, not control.
 const RE_CURE = /termina(?:s|r)?\s+(?:un[oa]?|uno de|with|one of)|ends? (?:one of |a )?(?:the following )?condition|cures?\b|elimina(?:s|r)?\s+(?:un[oa]?|uno de)|remove(?:s)?\s+(?:one|a|the)|restablec/i;
 
@@ -667,8 +1075,28 @@ function tagAbility(ab) {
 }
 
 // ── Rough average-damage estimate for ranking "best damage" ──
+// Prefers <roll> from the XML (already-resolved dice, e.g. "2d8+%0") over
+// regexing the description text, which is fragile (catches the first
+// NdM+K it finds, even if it's flavor text rather than the actual damage).
+// A spell can have multiple <roll> entries (e.g. duplicate cross-class
+// listings, or primary+secondary effects) — we take the highest average,
+// since "best damage" ranking just needs a representative top estimate.
 function estimateDamage(ab) {
   if (ab.dmgEstimate != null) return ab.dmgEstimate; // precomputed for weapon/unarmed attacks
+  if (ab.rolls && ab.rolls.length) {
+    let best = 0;
+    ab.rolls.forEach(r => {
+      const modStr = ab.spellAbilityMod != null ? String(ab.spellAbilityMod) : '0';
+      const resolved = r.replace(/%0/g, modStr);
+      const m = resolved.match(/(\d+)d(\d+)(?:\s*\+\s*(-?\d+))?/);
+      if (m) {
+        const n = +m[1], die = +m[2], bonus = m[3] ? +m[3] : 0;
+        const avg = Math.round((n * (die+1) / 2 + bonus) * 10) / 10;
+        if (avg > best) best = avg;
+      }
+    });
+    if (best > 0) return best;
+  }
   const text = ab.full || ab.desc || '';
   const m = text.match(/(\d+)d(\d+)(?:\s*\+\s*(\d+))?/);
   if (!m) return 0;
@@ -676,7 +1104,21 @@ function estimateDamage(ab) {
   return Math.round((n * (die+1) / 2 + bonus) * 10) / 10;
 }
 
-const SKIP_NAMES = /^(description|descripci[oó]n|characteristics|caracter[ií]sticas|starting\s|multiclass|proficiency|equipment|languages|idiomas|age|size|speed|ability score improvement|style$|instructor$|well-rounded|trained for|creating a|heraldic|xanathar)/i;
+// Exact-name matches only (anchored both ends) for generic class-feature
+// HEADERS that explain a mechanic but aren't themselves a usable ability
+// — the real options live in separate sibling feats with their own names
+// (e.g. Dorym's actual Channel Divinity picks are "Ira de la Naturaleza"
+// and "Expulsar Infieles", not a feat literally named "Canalizar
+// Divinidad"). Confirmed via Test_PC/Dorym: without this, the header text
+// ("...utilizar Canalizar Divinidad...", "cuando empleas...") matches the
+// channeldivinity resKey pattern just like the real options do, creating
+// a phantom third "ability" that duplicates/shadows the real ones.
+// "Artificer Specialist" is the equivalent header for all Artificer
+// subclass descriptions — each concrete subclass option is its own feat
+// with the pattern "Artificer Specialist: [Name]".
+const SKIP_NAMES_EXACT = /^(canalizar divinidad|channel divinity|artificer specialist)$/i;
+
+const SKIP_NAMES = /^(description|descripci[oó]n|characteristics|caracter[ií]sticas|suggested characteristics|specialty|talent|starting\s|multiclass|proficiency|equipment|languages|idiomas|age|size|speed|ability score improvement|style$|instructor$|well-rounded|trained for|creating a|heraldic|xanathar|artificers? in many worlds|creating an artificer|tool proficiency|tools of the trade|the right tool|spellcasting$)/i;
 
 function buildAbilities(entries, level, mods, prof, weapons, spellEntries, spellDC) {
   const out = { action:[], bonus:[], reaction:[], utility:[], trigger:[] };
@@ -747,7 +1189,7 @@ function buildAbilities(entries, level, mods, prof, weapons, spellEntries, spell
   // ── Feats / item abilities ────────────────────────
   const seen = new Set();
   entries.forEach((e, idx) => {
-    if (SKIP_NAMES.test(e.name)) return;
+    if (SKIP_NAMES.test(e.name) || SKIP_NAMES_EXACT.test(e.name.trim())) return;
     if (e.text.length < 30) return;
 
     const key = e.name.toLowerCase();
@@ -761,7 +1203,8 @@ function buildAbilities(entries, level, mods, prof, weapons, spellEntries, spell
         id:`e${idx}`, name:e.name, desc,
         full: (full !== desc ? full : null),
         pc:trig.pc, once:false, source:e.source, spellLevel:0, dc:null,
-        triggerKind: trig.triggerKind, scaling: trig.scaling, variablePC: trig.variablePC
+        triggerKind: trig.triggerKind, scaling: trig.scaling, variablePC: trig.variablePC,
+        resKey: trig.resKey
       };
       obj.tags = tagAbility(obj);
       out.trigger.push(obj);
@@ -786,15 +1229,16 @@ function buildAbilities(entries, level, mods, prof, weapons, spellEntries, spell
 
     seen.add(key);
 
-    const pc    = detectPCCost(e.text);
-    const once  = /once (?:on each|per) turn|una vez por turno/i.test(e.text);
-    const desc  = shortDesc(e.text);
-    const full  = fullDescClean(e.text);
+    const pc     = detectPCCost(e.text);
+    const resKey = pc > 0 ? detectResKey(e.text) : null;
+    const once   = /once (?:on each|per) turn|una vez por turno/i.test(e.text);
+    const desc   = shortDesc(e.text);
+    const full   = fullDescClean(e.text);
 
     const obj = {
       id:`e${idx}`, name:e.name, desc,
       full: (full !== desc ? full : null),
-      pc, once, source:e.source, spellLevel:0, dc:null
+      pc, once, source:e.source, spellLevel:0, dc:null, resKey
     };
     obj.tags = tagAbility(obj);
     out[type].push(obj);
@@ -825,13 +1269,17 @@ function buildAbilities(entries, level, mods, prof, weapons, spellEntries, spell
       full = `${sp.range ? 'Alcance: '+sp.range : ''}${sp.range && sp.duration ? ' · ' : ''}${sp.duration ? 'Duración: '+sp.duration : ''}\n\n${full}`;
     }
     const desc = shortDesc(sp.text);
+    const spellAbilityMod = (sp.abilityIdx !== null) ? mods[ABILITY_KEYS[sp.abilityIdx]] : null;
 
     const obj = {
       id: sp.id, name: sp.name, desc,
       full: (full !== desc ? full : null),
       pc:0, once:false, source:'spell',
       spellLevel: sp.level, dc,
-      meta: metaParts.join(' · ')
+      meta: metaParts.join(' · '),
+      rolls: sp.rolls, spellAbilityMod,
+      slotPrefix: sp.pactSlotLevel ? 'pactsl' : 'sl',
+      slotLevel: sp.pactSlotLevel || sp.level
     };
     obj.tags = tagAbility(obj);
     out[stype].push(obj);
@@ -967,6 +1415,15 @@ function render() {
           <span class="tnum-max">/ ${t.max}</span>
           <button class="tnum-btn" onclick="chTracker('${t.id}',1)">+</button>
         </div>`;
+        if (t.isPool) {
+          const amt = G.poolAmt[t.id] ?? Math.min(5, t.max);
+          h += `<div class="pool-row">
+            <input type="number" inputmode="numeric" class="pool-input" id="poolamt-${t.id}"
+              value="${amt}" min="1" max="${t.max}"
+              onchange="setPoolAmt('${t.id}',this.value)">
+            <button class="pool-btn" onclick="poolSpend('${t.id}')">Gastar</button>
+          </div>`;
+        }
       }
 
       if (reset) h += `<div class="tcard-reset">${reset}</div>`;
@@ -1012,25 +1469,40 @@ function render() {
     if (!collapsed) {
     abs.forEach(ab => {
       const onceUsed = ab.once && G.oncePerTurn[ab.id];
-      const pcTracker = char.trackers.find(t => RE_PC_TRACKER.test(t.label));
+      const pcTracker = ab.pc > 0 ? findResTracker(ab.resKey) : null;
       const pcCur = pcTracker ? (G.trackers[pcTracker.id] ?? pcTracker.max) : 99;
       const pcOk  = pcCur >= ab.pc;
 
-      // Spell slot availability / upcasting
+      // Spell slot availability / upcasting.
+      // Pact Magic spells (ab.slotPrefix === 'pactsl') don't get the normal
+      // upcast stepper: by RAW you don't choose what level to cast a
+      // Warlock spell at — every spell you know is automatically cast at
+      // your full Pact slot level (confirmed via Warlock_Test_PC: a 20th-
+      // level Warlock's spells are all known at levels 1-5 but the only
+      // slots that exist are 4x 5th-level Pact slots). Defaulting castLevel
+      // to the spell's own nominal level here (like normal casters) would
+      // make every sub-5th-level Warlock spell look permanently "locked"
+      // until the player manually stepped the cost up — so it's pinned.
       let slotOk = true, slotTracker = null, castLevel = ab.spellLevel;
       let canUpcast = false, maxCastLevel = ab.spellLevel;
+      const slotPrefix = ab.slotPrefix || 'sl';
       if (ab.spellLevel > 0) {
-        maxCastLevel = Math.max(ab.spellLevel, char.maxSpellLevel || ab.spellLevel);
-        canUpcast = maxCastLevel > ab.spellLevel;
-        castLevel = Math.min(Math.max(G.castLevel[ab.id] ?? ab.spellLevel, ab.spellLevel), maxCastLevel);
-        slotTracker = char.trackers.find(t => t.id === `sl${castLevel}`);
+        if (slotPrefix === 'pactsl') {
+          castLevel = ab.slotLevel;
+          slotTracker = char.trackers.find(t => t.id === `pactsl${castLevel}`);
+        } else {
+          maxCastLevel = Math.max(ab.spellLevel, char.maxSpellLevel || ab.spellLevel);
+          canUpcast = maxCastLevel > ab.spellLevel;
+          castLevel = Math.min(Math.max(G.castLevel[ab.id] ?? ab.spellLevel, ab.spellLevel), maxCastLevel);
+          slotTracker = char.trackers.find(t => t.id === `sl${castLevel}`);
+        }
         const slotCur = slotTracker ? (G.trackers[slotTracker.id] ?? slotTracker.max) : 0;
         slotOk = slotTracker ? slotCur > 0 : false;
       }
 
       const dis   = slotUsed || onceUsed || !pcOk || !slotOk;
       const cls2  = slotUsed ? 'used' : (!pcOk || onceUsed || !slotOk ? 'locked' : '');
-      const fn    = dis ? '' : `useAb('${ab.id}','${sec.flag}',${ab.pc},${ab.once},${ab.spellLevel>0?castLevel:0})`;
+      const fn    = dis ? '' : `useAb('${ab.id}','${sec.flag}',${ab.pc},${ab.once},${ab.spellLevel>0?castLevel:0},'${ab.resKey||''}','${slotPrefix}')`;
       const srcLabel = ab.source === 'item'   ? '📦 ítem' :
                        ab.source === 'weapon' ? '🗡 arma' :
                        ab.source === 'race'   ? '🧬 raza' :
@@ -1053,7 +1525,7 @@ function render() {
           costBadge = `<span class="cost ${slotOk?'c-blue':'c-locked'}">Nv.${ab.spellLevel}</span>`;
         }
       } else if (ab.pc > 0) {
-        costBadge = `<span class="cost ${pcOk?'c-blue':'c-locked'}">${ab.pc} PC</span>`;
+        costBadge = `<span class="cost ${pcOk?'c-blue':'c-locked'}">${ab.pc} ${esc(resAbbrev(ab.resKey, pcTracker?.label))}</span>`;
       } else {
         costBadge = `<span class="cost c-free">gratis</span>`;
       }
@@ -1128,15 +1600,42 @@ function matchesCategory(tags, cat) {
 function abilityAvailable(ab, secFlag) {
   if (G[secFlag]) return false;
   if (ab.once && G.oncePerTurn[ab.id]) return false;
-  const pcTracker = char.trackers.find(t => RE_PC_TRACKER.test(t.label));
-  const pcCur = pcTracker ? (G.trackers[pcTracker.id] ?? pcTracker.max) : 99;
-  if (pcCur < ab.pc) return false;
+  if (ab.pc > 0) {
+    const pcTracker = findResTracker(ab.resKey);
+    const pcCur = pcTracker ? (G.trackers[pcTracker.id] ?? pcTracker.max) : 99;
+    if (pcCur < ab.pc) return false;
+  }
   if (ab.spellLevel > 0) {
-    const st = char.trackers.find(t => t.id === `sl${ab.spellLevel}`);
+    const lvl = ab.slotLevel || ab.spellLevel;
+    const prefix = ab.slotPrefix || 'sl';
+    const st = char.trackers.find(t => t.id === `${prefix}${lvl}`);
     const cur = st ? (G.trackers[st.id] ?? st.max) : 0;
     if (cur <= 0) return false;
   }
   return true;
+}
+
+// Finds the best currently-affordable "smite"-style trigger (Divine Smite
+// and similar): the highest spell-slot level (within the feature's own cap)
+// that still has a slot remaining, and the bonus damage it would deal.
+function bestSmiteOption() {
+  const smites = (char.abilities.trigger || [])
+    .filter(a => !G.hidden.abilities[a.id])
+    .filter(a => a.triggerKind === 'smite' && a.scaling);
+  if (!smites.length) return null;
+
+  const ab = smites[0];
+  const cap = Math.min(ab.scaling.maxLevel, char.maxSpellLevel || ab.scaling.maxLevel);
+  for (let L = cap; L >= 1; L--) {
+    const t = char.trackers.find(t => t.id === `sl${L}`);
+    const cur = t ? (G.trackers[t.id] ?? t.max) : 0;
+    if (cur > 0) {
+      const dice = Math.min(ab.scaling.maxN, ab.scaling.baseN + (L-1)*ab.scaling.perLevelN);
+      const dmg  = Math.round(dice * (ab.scaling.die+1) / 2 * 10) / 10;
+      return { ab, level:L, dice, die:ab.scaling.die, dmg };
+    }
+  }
+  return null;
 }
 
 function buildSuggestions() {
@@ -1159,6 +1658,23 @@ function buildSuggestions() {
       }
       picks[sec] = { ab: best, secFlag };
     });
+
+    if (cat.key === 'damage') {
+      // Stack a Divine-Smite-style trigger onto the weapon-attack pick,
+      // since these features specifically trigger on a weapon hit.
+      let smite = null;
+      if (picks.action && picks.action.ab.source === 'weapon') {
+        smite = bestSmiteOption();
+      }
+      if (Object.keys(picks).length || smite) {
+        let total = 0;
+        Object.values(picks).forEach(p => total += estimateDamage(p.ab));
+        if (smite) total += smite.dmg;
+        results.push({ ...cat, picks, smite, total });
+      }
+      return;
+    }
+
     if (Object.keys(picks).length) results.push({ ...cat, picks });
   });
   return results;
@@ -1177,13 +1693,17 @@ function renderSuggestions() {
     return h + `</div>`;
   }
 
+  SUGGESTION_COMBOS = [];
+
   suggestions.forEach(s => {
     h += `<div class="sugg-card"><div class="sugg-cat">${s.label}</div>`;
+    let partCount = 0;
     ['action','bonus','reaction'].forEach(sec => {
       const pick = s.picks[sec];
       if (!pick) return;
+      partCount++;
       const ab = pick.ab;
-      const fn = `useAb('${ab.id}','${pick.secFlag}',${ab.pc},${ab.once},${ab.spellLevel||0})`;
+      const fn = `useAb('${ab.id}','${pick.secFlag}',${ab.pc},${ab.once},${(ab.slotLevel||ab.spellLevel||0)},'${ab.resKey||''}','${ab.slotPrefix||'sl'}')`;
       let extra = '';
       if (s.key === 'damage') {
         const d = estimateDamage(ab);
@@ -1199,6 +1719,32 @@ function renderSuggestions() {
         ${extra ? `<span class="sugg-extra">${esc(extra)}</span>` : ''}
       </div>`;
     });
+
+    if (s.key === 'damage' && s.smite) {
+      partCount++;
+      const sm = s.smite;
+      h += `<div class="sugg-pick" onclick="useSmite('${sm.ab.id}',${sm.level})">
+        <span class="sugg-slot">Disparador</span>
+        <span class="sugg-name">${esc(sm.ab.name)} (Nv.${sm.level})</span>
+        <span class="sugg-extra">+${sm.dice}d${sm.die} ~${sm.dmg} dmg</span>
+      </div>`;
+    }
+
+    if (s.key === 'damage' && partCount > 1) {
+      const steps = [];
+      ['action','bonus','reaction'].forEach(sec => {
+        const p = s.picks[sec];
+        if (p) steps.push({ type:'ability', id:p.ab.id, secFlag:p.secFlag, pc:p.ab.pc, once:p.ab.once, spellLevel:(p.ab.slotLevel||p.ab.spellLevel||0), resKey:p.ab.resKey, slotPrefix:p.ab.slotPrefix });
+      });
+      if (s.smite) steps.push({ type:'smite', level:s.smite.level });
+      SUGGESTION_COMBOS.push(steps);
+      const idx = SUGGESTION_COMBOS.length - 1;
+      h += `<div class="sugg-total" onclick="applySuggestionCombo(${idx})">
+        <span>⚡ Aplicar combo completo</span>
+        <span class="sugg-total-val">~${s.total} dmg</span>
+      </div>`;
+    }
+
     h += `</div>`;
   });
 
@@ -1229,8 +1775,10 @@ function renderUtilitySection() {
     if (ab.full) FULL_DESC[ab.id] = ab.full;
 
     let slotOk = true, slotTracker = null;
+    const uSlotPrefix = ab.slotPrefix || 'sl';
+    const uSlotLevel = ab.slotLevel || ab.spellLevel;
     if (ab.spellLevel > 0) {
-      slotTracker = char.trackers.find(t => t.id === `sl${ab.spellLevel}`);
+      slotTracker = char.trackers.find(t => t.id === `${uSlotPrefix}${uSlotLevel}`);
       const slotCur = slotTracker ? (G.trackers[slotTracker.id] ?? slotTracker.max) : 0;
       slotOk = slotTracker ? slotCur > 0 : false;
     }
@@ -1252,7 +1800,7 @@ function renderUtilitySection() {
           ? `<span class="cost ${slotOk?'c-blue':'c-locked'}">Nv.${ab.spellLevel}</span>`
           : `<span class="cost c-free">gratis</span>`}
         ${ab.dc!=null ? `<span class="cost c-amber">CD ${ab.dc}</span>` : ''}
-        ${ab.spellLevel>0 ? `<button class="usar-btn" onclick="useUtility('${ab.id}',${ab.spellLevel})" ${slotOk?'':'disabled'}>Usar</button>` : ''}
+        ${ab.spellLevel>0 ? `<button class="usar-btn" onclick="useUtility('${ab.id}',${uSlotLevel},'${uSlotPrefix}')" ${slotOk?'':'disabled'}>Usar</button>` : ''}
       </div>
     </div>`;
   });
@@ -1267,8 +1815,8 @@ function setCastLevel(id, delta, min, max) {
   save(); render();
 }
 function toggleUtility() { G.showUtility = !G.showUtility; save(); render(); }
-function useUtility(id, spellLevel) {
-  spendSpellSlot(spellLevel);
+function useUtility(id, spellLevel, slotPrefix) {
+  spendSpellSlot(spellLevel, slotPrefix);
   save(); render();
   toast('Espacio de conjuro gastado');
 }
@@ -1279,14 +1827,8 @@ function useUtility(id, spellLevel) {
 //  spell slot spent), Metamagic, and other "spend a resource
 //  when X happens" abilities that don't use the action economy.
 // ═══════════════════════════════════════════════════
-function pcAbbrev(label) {
-  if (!label) return 'recurso';
-  if (/concentraci/i.test(label)) return 'PC';
-  if (/hechicer/i.test(label)) return 'PH';
-  if (/psionic/i.test(label)) return 'dado psi.';
-  if (/superiority|superioridad/i.test(label)) return 'dado sup.';
-  return label;
-}
+// (pcAbbrev removed — superseded by resAbbrev() above, which uses resKey
+// directly instead of re-deriving the abbreviation from a tracker label)
 
 function renderTriggerSection() {
   const all = (char.abilities.trigger || []).filter(a => !G.hidden.abilities[a.id]);
@@ -1300,8 +1842,6 @@ function renderTriggerSection() {
   </div>`;
   if (collapsed) return h + `</div>`;
 
-  const pcTracker = char.trackers.find(t => RE_PC_TRACKER.test(t.label));
-  const resLabel = pcAbbrev(pcTracker?.label);
   const maxSlotLevel = char.maxSpellLevel || 0;
 
   all.forEach(ab => {
@@ -1312,6 +1852,15 @@ function renderTriggerSection() {
                      ab.source === 'background' ? '🗺 trasfondo' : '';
     const displayName = ab.triggerKind === 'metamagic' && !/metamagi/i.test(ab.name)
       ? `🔀 Metamagia: ${ab.name}` : ab.name;
+
+    // Resolved per-ability (not once for the whole section) — each trigger
+    // may draw from a different resource pool on the same character (e.g.
+    // Dorym has both Puntos de Hechicería for Metamagia and Canalizar
+    // Divinidad; resolving this once globally picked whichever pool came
+    // first in char.trackers, regardless of which one the ability text
+    // actually named).
+    const pcTracker = (ab.pc > 0 || ab.variablePC) ? findResTracker(ab.resKey) : null;
+    const resLabel = resAbbrev(ab.resKey, pcTracker?.label);
 
     h += `<div class="trig">
       <button class="x-btn" onclick="hideAbility('${ab.id}')" title="Ocultar">✕</button>
@@ -1384,7 +1933,7 @@ function setTriggerLevel(id, delta, min, max) {
   save(); render();
 }
 function useSmite(id, level) {
-  spendSpellSlot(level);
+  applySmite(level);
   save(); render();
   toast(`Espacio Nv.${level} gastado`);
 }
@@ -1392,7 +1941,7 @@ function useTriggerResource(id) {
   const ab = (char.abilities.trigger || []).find(a => a.id === id);
   if (!ab) return;
   const amount = ab.variablePC ? (G.triggerSel[id] ?? 1) : ab.pc;
-  spendResource(amount);
+  spendResource(amount, ab.resKey);
   save(); render();
 }
 
@@ -1415,23 +1964,51 @@ function toggleDesc(id) {
 
 // ═══════════════════════════════════════════════════
 //  ACTIONS
+//  apply* mutate state only (no save/render) so multi-step
+//  combos can apply several effects then render once.
 // ═══════════════════════════════════════════════════
-function useAb(id, flag, pc, once, spellLevel) {
+function applyAbility(id, flag, pc, once, spellLevel, resKey, slotPrefix) {
   G[flag] = true;
-  if (pc > 0) spendResource(pc);
-  if (spellLevel > 0) spendSpellSlot(spellLevel);
+  if (pc > 0) spendResource(pc, resKey);
+  if (spellLevel > 0) spendSpellSlot(spellLevel, slotPrefix);
   if (once) G.oncePerTurn[id] = true;
+}
+function applySmite(level) { spendSpellSlot(level); }
+
+function useAb(id, flag, pc, once, spellLevel, resKey, slotPrefix) {
+  applyAbility(id, flag, pc, once, spellLevel, resKey, slotPrefix);
   save(); render();
 }
 
-function spendResource(n) {
-  const t = char.trackers.find(t => RE_PC_TRACKER.test(t.label));
+function applySuggestionCombo(idx) {
+  const steps = SUGGESTION_COMBOS[idx];
+  if (!steps) return;
+  steps.forEach(step => {
+    if (step.type === 'ability') applyAbility(step.id, step.secFlag, step.pc, step.once, step.spellLevel, step.resKey, step.slotPrefix);
+    else if (step.type === 'smite') applySmite(step.level);
+  });
+  save(); render();
+  toast('Combo aplicado');
+}
+
+// resKey identifies WHICH resource pool to spend from (see RESOURCE_TYPES
+// above). Passing it through explicitly — instead of re-deriving it from
+// a single shared global lookup — is the actual fix for the cross-pool
+// collision confirmed on Bo (Psionic Power wrongly spending Superiority
+// Die) and the reason Channel Divinity auto-tracking is now safe on
+// multiclass characters like Dorym.
+function spendResource(n, resKey) {
+  const t = findResTracker(resKey);
   if (!t) return;
   G.trackers[t.id] = Math.max(0, (G.trackers[t.id] ?? t.max) - n);
 }
 
-function spendSpellSlot(level) {
-  const t = char.trackers.find(t => t.id === `sl${level}`);
+// slotPrefix defaults to the normal 'sl' (regular spell slots). Pact
+// Magic (Warlock) spells pass 'pactsl' instead, so they decrement their
+// own independently-recharging pool rather than a nonexistent/wrong
+// shared one — see the Pact Magic comment block in parseFC5eXML.
+function spendSpellSlot(level, slotPrefix) {
+  const t = char.trackers.find(t => t.id === `${slotPrefix || 'sl'}${level}`);
   if (!t) return;
   G.trackers[t.id] = Math.max(0, (G.trackers[t.id] ?? t.max) - 1);
 }
@@ -1441,6 +2018,28 @@ function chTracker(id, delta) {
   if (!t) return;
   G.trackers[id] = Math.max(0, Math.min(t.max, (G.trackers[id] ?? t.max) + delta));
   save(); render();
+}
+
+function setPoolAmt(id, val) {
+  const t = char.trackers.find(t => t.id === id);
+  if (!t) return;
+  let amt = parseInt(val);
+  if (isNaN(amt) || amt < 1) amt = 1;
+  if (amt > t.max) amt = t.max;
+  G.poolAmt[id] = amt;
+  save();
+}
+
+function poolSpend(id) {
+  const t = char.trackers.find(t => t.id === id);
+  if (!t) return;
+  const amt = G.poolAmt[id] ?? Math.min(5, t.max);
+  const cur = G.trackers[id] ?? t.max;
+  const spent = Math.min(amt, cur);
+  if (spent <= 0) return;
+  G.trackers[id] = cur - spent;
+  save(); render();
+  toast(`${t.label}: −${spent} (quedan ${cur - spent})`);
 }
 
 function clickTDot(id, i) {
@@ -1649,6 +2248,7 @@ function loadSaved() {
         if (!G.collapsed) G.collapsed = {};
         if (!G.triggerSel) G.triggerSel = {};
         if (!G.castLevel) G.castLevel = {};
+        if (!G.poolAmt) G.poolAmt = {};
       }
       return true;
     }
@@ -1664,7 +2264,7 @@ function importXML(xmlText) {
     char = parseFC5eXML(xmlText);
     G = { round:1, hp:char.hpCur, tempHp:0, actionUsed:false, bonusUsed:false,
           reactionUsed:false, oncePerTurn:{}, trackers:{}, showUtility:false,
-          collapsed:{}, triggerSel:{}, castLevel:{},
+          collapsed:{}, triggerSel:{}, castLevel:{}, poolAmt:{},
           hidden:{ abilities:{}, trackers:{} } };
     char.trackers.forEach(t => { G.trackers[t.id] = t.max; });
     save();
