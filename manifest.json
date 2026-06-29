@@ -29,7 +29,6 @@
             "text/xml",
             "application/xml",
             "application/octet-stream",
-            "*/*",
             ".xml",
             ".dnd5e"
           ]
