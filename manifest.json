@@ -30,6 +30,7 @@
             "application/xml",
             "application/octet-stream",
             "text/plain",
+            "*/*",
             ".xml",
             ".dnd5e"
           ]
