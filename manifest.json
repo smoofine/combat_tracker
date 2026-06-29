@@ -18,7 +18,7 @@
     }
   ],
   "share_target": {
-    "action": "./?from-share",
+    "action": "https://smoofine.github.io/combat_tracker/?from-share",
     "method": "POST",
     "enctype": "multipart/form-data",
     "params": {
