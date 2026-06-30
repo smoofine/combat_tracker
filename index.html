@@ -1,0 +1,3345 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Combat Tracker — D&D 5e</title>
+<link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#12121e">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Combat Tracker">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+:root{
+  --bg:#12121e;--s1:#1c1c2e;--s2:#26263a;--s3:#303048;
+  --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.13);
+  --text:#e2e2f0;--muted:#7878a0;--hint:#4a4a68;
+  --blue:#6b8eff;--blue-bg:rgba(107,142,255,0.12);--blue-border:rgba(107,142,255,0.3);
+  --green:#5dd98a;--green-bg:rgba(93,217,138,0.12);--green-border:rgba(93,217,138,0.3);
+  --amber:#f0b84a;--amber-bg:rgba(240,184,74,0.12);--amber-border:rgba(240,184,74,0.3);
+  --red:#f06060;--red-bg:rgba(240,96,96,0.12);--red-border:rgba(240,96,96,0.3);
+  --r:10px;--r-sm:7px
+}
+html,body{height:100%;background:var(--bg);color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  font-size:15px;line-height:1.45;overscroll-behavior:none}
+
+/* ── Import Screen ─────────────────────────────────── */
+#screen-import{display:none;flex-direction:column;align-items:center;justify-content:center;
+  min-height:100dvh;padding:2rem;text-align:center}
+.imp-rune{font-size:2.8rem;margin-bottom:1.2rem}
+.imp-title{font-size:1.35rem;font-weight:700;margin-bottom:.5rem}
+.imp-sub{color:var(--muted);font-size:.88rem;line-height:1.7;margin-bottom:2rem;max-width:300px}
+.imp-sub code{background:var(--s2);color:var(--blue);padding:1px 6px;border-radius:4px;font-family:monospace;font-size:.83rem}
+.btn-primary{background:var(--blue);color:#fff;border:none;padding:14px 0;
+  border-radius:var(--r);font-size:.97rem;font-weight:600;cursor:pointer;width:100%;max-width:300px}
+.btn-primary:active{opacity:.8}
+#file-input{display:none}
+.imp-hint{margin-top:1.2rem;font-size:.75rem;color:var(--hint);line-height:1.6}
+
+/* ── Tracker Screen ────────────────────────────────── */
+#screen-tracker{display:none;min-height:100dvh;flex-direction:column}
+
+/* Header */
+.header{background:var(--s1);border-bottom:1px solid var(--border);
+  padding:10px 14px;display:flex;align-items:center;gap:8px;
+  position:sticky;top:0;z-index:20}
+.hdr-change{background:var(--s2);border:1px solid var(--border2);color:var(--muted);
+  width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:1rem;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center}
+.hdr-change:active{opacity:.6}
+.hdr-info{flex:1;min-width:0}
+.hdr-name{font-weight:700;font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hdr-meta{font-size:.73rem;color:var(--muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.round-ctrl{display:flex;align-items:center;gap:4px;flex-shrink:0}
+.round-btn{background:var(--s2);border:1px solid var(--border2);color:var(--muted);
+  width:24px;height:24px;border-radius:50%;cursor:pointer;font-size:1rem;
+  display:flex;align-items:center;justify-content:center;line-height:1}
+.round-btn:active{opacity:.6}
+.round-display{background:var(--s2);border:1px solid var(--border);
+  padding:3px 10px;border-radius:14px;font-size:.78rem;color:var(--muted);white-space:nowrap}
+.round-display span{color:var(--text);font-weight:600}
+
+/* Content */
+.content{padding:12px 14px 32px;flex:1}
+
+/* HP row */
+.hp-row{display:flex;align-items:center;gap:8px;margin-bottom:6px;
+  background:var(--s1);border:1px solid var(--border);border-radius:var(--r);padding:10px 14px}
+.hp-label{font-size:.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;flex:1}
+.hp-controls{display:flex;align-items:center;gap:8px}
+.adj-btn{background:var(--s2);border:1px solid var(--border2);color:var(--text);
+  width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:1.1rem;
+  display:flex;align-items:center;justify-content:center}
+.adj-btn:active{opacity:.6}
+.hp-val{font-size:1.15rem;font-weight:700;min-width:72px;text-align:center;cursor:pointer}
+.hp-max{font-size:.78rem;color:var(--muted);font-weight:400}
+.hp-temp{font-size:.78rem;color:var(--amber);font-weight:600;margin-left:2px}
+.calc-btn{background:var(--s2);border:1px solid var(--border2);color:var(--blue);
+  width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:1rem;
+  display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.calc-btn:active{opacity:.6}
+.calc-btn.open{background:var(--blue-bg);border-color:var(--blue-border)}
+
+/* HP calculator panel */
+.calc-panel{background:var(--s1);border:1px solid var(--border);border-radius:var(--r);
+  padding:10px;margin-bottom:6px}
+.calc-display{background:#0c0c14;border:1px solid var(--border);border-radius:var(--r-sm);
+  padding:10px 12px;text-align:right;font-size:1.4rem;font-weight:700;
+  min-height:1.6em;margin-bottom:8px;letter-spacing:.02em;word-break:break-all;
+  color:var(--text)}
+.calc-display.empty{color:var(--hint)}
+.calc-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-bottom:8px}
+.calc-key{background:var(--s2);border:1px solid var(--border2);color:var(--text);
+  border-radius:var(--r-sm);padding:11px 0;font-size:.95rem;font-weight:600;
+  cursor:pointer;text-align:center}
+.calc-key:active{opacity:.6}
+.calc-key.op{color:var(--amber)}
+.calc-key.die{color:var(--blue);font-size:.82rem}
+.calc-key.clear{color:var(--red)}
+.calc-actions{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px}
+.calc-act{border-radius:var(--r-sm);padding:11px 0;font-size:.85rem;font-weight:700;
+  cursor:pointer;text-align:center;border:none;color:#fff}
+.calc-act:active{opacity:.7}
+.calc-heal{background:#2d7d4f}
+.calc-temp{background:#3a6b9e}
+.calc-dmg{background:#8b2c2c}
+
+/* Spell DC row */
+.dc-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.dc-badge{background:var(--s1);border:1px solid var(--border);border-radius:var(--r-sm);
+  padding:6px 12px;font-size:.78rem;color:var(--muted);display:flex;align-items:center;gap:6px}
+.dc-badge b{color:var(--amber);font-size:.95rem}
+.trackers-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:6px;margin-bottom:10px}
+.tcard{background:var(--s1);border:1px solid var(--border);border-radius:var(--r-sm);padding:9px 10px;position:relative}
+.tcard-label{font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px;
+  padding-right:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tcard-dots{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:4px}
+.tdot{width:16px;height:16px;border-radius:50%;cursor:pointer;flex-shrink:0;
+  border:1.5px solid var(--hint);background:transparent;transition:background .1s,border-color .1s}
+.tdot.on{background:var(--blue);border-color:var(--blue)}
+.tdot:active{opacity:.6}
+.tcard-num{display:flex;align-items:center;gap:6px}
+.tnum-val{font-size:1.1rem;font-weight:700}
+.tnum-max{font-size:.78rem;color:var(--muted)}
+.tnum-btn{background:var(--s2);border:1px solid var(--border2);color:var(--text);
+  width:24px;height:24px;border-radius:50%;cursor:pointer;font-size:1rem;
+  display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.tnum-btn:active{opacity:.6}
+.tcard-dice{font-size:.95rem;font-weight:600;color:var(--amber);letter-spacing:.02em;margin-bottom:3px}
+.tcard-reset{font-size:.68rem;color:var(--hint)}
+.pool-row{display:flex;gap:4px;margin-top:5px;align-items:center}
+.pool-input{width:40px;background:var(--s2);border:1px solid var(--border2);color:var(--text);
+  border-radius:6px;padding:3px 4px;font-size:.78rem;text-align:center;
+  -moz-appearance:textfield}
+.pool-input::-webkit-outer-spin-button,.pool-input::-webkit-inner-spin-button{
+  -webkit-appearance:none;margin:0}
+.pool-btn{background:var(--blue-bg);border:1px solid var(--blue-border);color:var(--blue);
+  border-radius:6px;padding:3px 0;font-size:.7rem;font-weight:600;cursor:pointer;flex:1;
+  text-align:center}
+.pool-btn:active{opacity:.6}
+.x-btn{flex-shrink:0;align-self:flex-start;margin-top:1px;width:20px;height:20px;
+  border-radius:50%;background:var(--s3);border:none;color:var(--hint);font-size:.65rem;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;
+  padding:0;line-height:1;touch-action:manipulation}
+.x-btn:active{opacity:.5}
+
+/* Controls */
+.ctrl-row{display:flex;gap:5px;margin-bottom:12px}
+.btn-ctrl{flex:1;background:var(--s2);border:1px solid var(--border);color:var(--text);
+  padding:8px 4px;border-radius:var(--r-sm);font-size:.78rem;cursor:pointer;text-align:center}
+.btn-ctrl:active{opacity:.6}
+.btn-ctrl.accent{color:var(--blue);border-color:var(--blue-border)}
+.btn-ctrl.danger{color:var(--red);border-color:var(--red-border)}
+
+/* Section */
+.section{margin-bottom:12px}
+.sec-head{display:flex;align-items:center;gap:7px;margin-bottom:7px}
+.sec-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.d-action{background:var(--blue)} .d-bonus{background:var(--green)}
+.d-reaction{background:var(--amber)} .d-combo{background:var(--muted)}
+.sec-name{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.sec-used{margin-left:auto;font-size:.7rem;color:var(--red)}
+
+/* Ability button */
+.ab{width:100%;text-align:left;background:var(--s1);border:1px solid var(--border);
+  border-radius:var(--r-sm);padding:9px 11px 8px 11px;margin-bottom:4px;cursor:pointer;
+  color:var(--text);font-family:inherit;font-size:.88rem;position:relative;
+  display:flex;align-items:flex-start;gap:8px;transition:opacity .12s}
+.ab:active{opacity:.65}
+.ab.used{opacity:.35;cursor:default;text-decoration:line-through;text-decoration-color:var(--hint)}
+.ab.locked{opacity:.3;cursor:not-allowed}
+.ab-main{flex:1;min-width:0;padding-right:4px}
+.ab-name{font-weight:600;margin-bottom:1px}
+.ab-desc{font-size:.76rem;color:var(--muted);line-height:1.45}
+.ab-more{font-size:.7rem;color:var(--blue);margin-top:3px;display:inline-block;cursor:pointer}
+.ab-src{font-size:.66rem;color:var(--hint);margin-top:2px}
+.ab-right{display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex-shrink:0}
+.ab-costs{display:flex;gap:4px;flex-direction:column;align-items:flex-end}
+.cost{font-size:.7rem;padding:2px 7px;border-radius:10px;white-space:nowrap;font-weight:500}
+.c-blue{background:var(--blue-bg);color:var(--blue)}
+.c-free{background:var(--s3);color:var(--muted)}
+.c-locked{background:var(--red-bg);color:var(--red)}
+.c-amber{background:var(--amber-bg);color:var(--amber)}
+
+/* Combo */
+.combo{border-left:3px solid var(--blue-border);background:var(--s1);
+  border-radius:0 var(--r-sm) var(--r-sm) 0;padding:9px 11px;margin-bottom:5px;cursor:pointer}
+.combo:active{opacity:.65}
+.combo.locked{border-left-color:var(--hint);opacity:.4;cursor:default}
+.combo-name{font-weight:600;font-size:.88rem;margin-bottom:3px}
+.combo-steps{font-size:.75rem;color:var(--muted);line-height:1.6}
+
+/* Suggestions (universal combo system) */
+.sugg-card{border-left:3px solid var(--blue-border);background:var(--s1);
+  border-radius:0 var(--r-sm) var(--r-sm) 0;padding:9px 11px;margin-bottom:5px;cursor:pointer}
+.sugg-card:active{opacity:.65}
+.sugg-cat{font-weight:600;font-size:.8rem;margin-bottom:5px;display:flex;align-items:center;gap:6px}
+.sugg-pick{display:flex;align-items:baseline;gap:6px;font-size:.82rem;margin-bottom:2px}
+.sugg-slot{font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+  color:var(--muted);min-width:38px;flex-shrink:0}
+.sugg-name{font-weight:500}
+.sugg-extra{font-size:.72rem;color:var(--muted)}
+.sugg-empty{font-size:.78rem;color:var(--hint);font-style:italic}
+.sugg-total{display:flex;align-items:center;justify-content:space-between;gap:8px;
+  margin-top:6px;padding-top:6px;border-top:1px dashed var(--border2);
+  cursor:pointer;font-size:.8rem;font-weight:600;color:var(--blue)}
+.sugg-total:active{opacity:.6}
+.sugg-total-val{color:var(--amber)}
+
+/* Utility / out-of-combat section */
+.util-toggle{display:flex;align-items:center;gap:7px;cursor:pointer;
+  background:var(--s1);border:1px solid var(--border);border-radius:var(--r-sm);
+  padding:9px 11px;margin-bottom:8px;font-size:.82rem;color:var(--muted);font-weight:600}
+.util-toggle .chev{margin-left:auto;font-size:.7rem;transition:transform .15s}
+.util-toggle.open .chev{transform:rotate(90deg)}
+.ab.util .ab-costs{flex-direction:column}
+.usar-btn{background:var(--blue-bg);border:1px solid var(--blue-border);color:var(--blue);
+  border-radius:var(--r-sm);padding:4px 9px;font-size:.7rem;font-weight:600;cursor:pointer;margin-top:4px}
+.usar-btn:active{opacity:.6}
+.usar-btn:disabled{opacity:.35;cursor:not-allowed}
+
+/* Generic collapsible section header */
+.sec-toggle{cursor:pointer}
+.sec-toggle .chev{margin-left:auto;font-size:.65rem;color:var(--muted);transition:transform .15s}
+.sec-toggle.collapsed .chev{transform:rotate(-90deg)}
+
+/* Stepper (level/cost selectors for triggers & spell upcasting) */
+.stepper{display:flex;align-items:center;gap:4px}
+.stepper-btn{background:var(--s2);border:1px solid var(--border2);color:var(--text);
+  width:22px;height:22px;border-radius:50%;cursor:pointer;font-size:.85rem;
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;padding:0}
+.stepper-btn:active{opacity:.6}
+.stepper-btn:disabled{opacity:.3;cursor:not-allowed}
+.stepper-val{font-size:.75rem;font-weight:700;min-width:36px;text-align:center;color:var(--blue)}
+
+/* Trigger cards (Divine Smite, Metamagic, etc.) */
+.trig{background:var(--s1);border:1px solid var(--border);border-radius:var(--r-sm);
+  padding:9px 11px;margin-bottom:5px;position:relative}
+.trig-head{display:flex;align-items:flex-start;gap:9px;margin-bottom:6px}
+.trig-main{flex:1;min-width:0}
+.trig-name{font-weight:600;font-size:.88rem;margin-bottom:1px}
+.trig-desc{font-size:.76rem;color:var(--muted);line-height:1.45}
+.trig-foot{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.trig-dmg{font-size:.78rem;color:var(--amber);font-weight:600}
+
+.div{height:1px;background:var(--border);margin:10px 0}
+.footer-btn{background:var(--s2);border:1px solid var(--border);color:var(--muted);
+  padding:9px;border-radius:var(--r-sm);font-size:.78rem;cursor:pointer;width:100%;text-align:center;margin-top:8px}
+.footer-btn:active{opacity:.6}
+
+/* Trash modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.6);
+  display:flex;align-items:flex-end;justify-content:center;z-index:200}
+.modal-sheet{background:var(--s1);border-radius:var(--r) var(--r) 0 0;
+  width:100%;max-width:480px;max-height:78vh;display:flex;flex-direction:column;
+  border:1px solid var(--border2);border-bottom:none}
+.modal-head{display:flex;align-items:center;gap:8px;padding:14px 14px 10px;
+  border-bottom:1px solid var(--border)}
+.modal-title{font-weight:700;font-size:.95rem;flex:1}
+.modal-close{background:var(--s2);border:1px solid var(--border2);color:var(--muted);
+  width:28px;height:28px;border-radius:50%;cursor:pointer;font-size:.9rem;
+  display:flex;align-items:center;justify-content:center}
+.modal-close:active{opacity:.6}
+.modal-body{overflow-y:auto;padding:8px 14px 14px;flex:1}
+.modal-empty{color:var(--hint);font-size:.85rem;text-align:center;padding:24px 0}
+.trash-group{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;
+  color:var(--muted);margin:10px 0 6px}
+.trash-item{display:flex;align-items:center;gap:8px;background:var(--s2);
+  border:1px solid var(--border);border-radius:var(--r-sm);padding:8px 10px;margin-bottom:5px}
+.trash-name{flex:1;font-size:.86rem;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.trash-restore{background:var(--blue-bg);border:1px solid var(--blue-border);color:var(--blue);
+  border-radius:var(--r-sm);padding:6px 12px;font-size:.78rem;font-weight:600;cursor:pointer;flex-shrink:0}
+.trash-restore:active{opacity:.6}
+.modal-foot{padding:10px 14px;border-top:1px solid var(--border)}
+
+#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);
+  background:var(--s3);border:1px solid var(--border2);color:var(--text);
+  padding:9px 18px;border-radius:20px;font-size:.83rem;
+  opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;z-index:100;white-space:nowrap;max-width:88vw;
+  overflow:hidden;text-overflow:ellipsis}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+.combo-used{box-shadow:0 0 0 2px var(--amber)!important;border-color:var(--amber)!important}
+.passive-trait{opacity:.9;border-left:3px solid var(--muted);cursor:default}
+.passive-trait:hover{filter:none}
+.undo-btn{background:none;border:1px solid var(--border);border-radius:5px;color:var(--amber);font-size:.85rem;padding:2px 7px;cursor:pointer;line-height:1}
+.undo-btn:hover{background:var(--amber);color:#000}
+
+.pool-input{width:42px;font-size:.8rem;font-weight:700;text-align:center;
+  background:var(--s2);border:1px solid var(--border2);border-radius:5px;
+  color:var(--blue);padding:2px 3px;-moz-appearance:textfield;cursor:text}
+.pool-input::-webkit-outer-spin-button,.pool-input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.pool-input:focus{outline:2px solid var(--blue);border-color:var(--blue)}
+
+/* ── Active Effects Panel ── */
+.eff-row{display:flex;align-items:flex-start;gap:8px;padding:7px 11px;border-bottom:1px solid var(--border)}
+.eff-row:last-of-type{border-bottom:none}
+.eff-icon{font-size:1rem;flex-shrink:0;margin-top:1px}
+.eff-info{flex:1;min-width:0}
+.eff-name{font-size:.85rem;font-weight:600;color:var(--text)}
+.eff-flags{display:flex;flex-wrap:wrap;gap:3px;margin-top:3px}
+.eff-flag{font-size:.68rem;background:rgba(245,158,11,.15);color:var(--amber);
+  border:1px solid rgba(245,158,11,.3);border-radius:4px;padding:1px 5px}
+.eff-conc-hint{font-size:.68rem;color:var(--muted);margin-top:2px}
+.eff-end-btn{flex-shrink:0;background:none;border:1px solid var(--border);
+  border-radius:50%;width:20px;height:20px;color:var(--hint);cursor:pointer;
+  font-size:.65rem;display:flex;align-items:center;justify-content:center;align-self:flex-start}
+.eff-end-btn:hover{color:var(--red);border-color:var(--red)}
+.eff-break-conc-btn{width:calc(100% - 22px);margin:6px 11px 8px;
+  background:none;border:1px solid rgba(239,68,68,.35);color:var(--red);
+  border-radius:6px;padding:5px;font-size:.78rem;cursor:pointer}
+.eff-break-conc-btn:hover{background:rgba(239,68,68,.12)}
+
+/* ── Effect activation badges on ability cards ── */
+.eff-badge{display:flex;align-items:center;gap:4px;margin-top:5px;flex-wrap:wrap}
+.eff-badge.active{color:var(--blue);font-size:.73rem;font-weight:600;cursor:pointer}
+.eff-activate-btn{font-size:.71rem;background:rgba(245,158,11,.12);
+  border:1px solid rgba(245,158,11,.4);color:var(--amber);border-radius:5px;
+  padding:2px 7px;cursor:pointer;white-space:nowrap}
+.eff-activate-btn:hover{background:rgba(245,158,11,.25)}
+.target-toggle{font-size:.71rem;background:var(--s2);border:1px solid var(--border2);
+  color:var(--muted);border-radius:4px;padding:2px 7px;cursor:pointer}
+.target-toggle.active{background:rgba(96,165,250,.2);color:var(--blue);
+  border-color:rgba(96,165,250,.5)}
+
+/* ── Encounter State Panel ── */
+.enc-panel{padding:8px 11px 4px}
+.enc-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:7px}
+.enc-label{font-size:.78rem;color:var(--muted)}
+.enc-conds{display:flex;flex-wrap:wrap;gap:5px;padding-bottom:8px}
+.enc-toggle-btn{font-size:.72rem;background:var(--s2);border:1px solid var(--border2);
+  color:var(--muted);border-radius:6px;padding:3px 8px;cursor:pointer;white-space:nowrap}
+.enc-toggle-btn.active{background:rgba(239,68,68,.15);color:var(--red);
+  border-color:rgba(239,68,68,.4);font-weight:600}
+
+/* ── Concentration replacement warning ── */
+.conc-warning{display:flex;align-items:center;gap:4px;margin-top:4px;
+  font-size:.71rem;color:#f59e0b;background:rgba(245,158,11,.1);
+  border:1px solid rgba(245,158,11,.3);border-radius:5px;padding:3px 7px;
+  line-height:1.3}
+.conc-warning em{font-style:normal;font-weight:600;color:var(--amber)}
+
+/* ── Armor Class row ── */
+.ac-row{display:flex;align-items:center;gap:6px;padding:4px 0 2px;
+  border-top:1px solid var(--border);margin-top:4px}
+.ac-shield{font-size:1.1rem;line-height:1}
+.ac-val{font-size:1.4rem;font-weight:800;color:var(--blue);line-height:1}
+.ac-label{font-size:.75rem;color:var(--muted)}
+.ac-bonus{color:var(--amber);font-size:.75rem;font-weight:700}
+.ac-prof{font-size:.73rem;color:var(--muted)}
+
+/* ── Dawn recharge button ── */
+.dawn-btn{font-size:.72rem;background:rgba(251,191,36,.15);
+  border:1px solid rgba(251,191,36,.4);color:#f59e0b;
+  border-radius:5px;padding:3px 8px;cursor:pointer;white-space:nowrap}
+.dawn-btn:hover{background:rgba(251,191,36,.3)}
+
+/* ── Update banner (Service Worker version notification) ── */
+.update-banner{position:fixed;left:0;right:0;bottom:0;z-index:200;
+  background:#1e3a5f;border-top:2px solid var(--blue);
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:10px 14px;padding-bottom:calc(10px + env(safe-area-inset-bottom));
+  transform:translateY(100%);transition:transform .25s ease;
+  box-shadow:0 -4px 16px rgba(0,0,0,.4)}
+.update-banner.show{transform:translateY(0)}
+.update-banner-text{font-size:.85rem;color:var(--text);font-weight:600}
+.update-banner-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.update-btn-reload{background:var(--blue);color:#0a0a14;border:none;
+  border-radius:6px;padding:7px 14px;font-size:.82rem;font-weight:700;cursor:pointer}
+.update-btn-reload:active{opacity:.8}
+.update-btn-dismiss{background:none;border:1px solid rgba(255,255,255,.25);
+  color:var(--muted);border-radius:50%;width:26px;height:26px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;font-size:.75rem;flex-shrink:0}
+
+/* Small floating pill to bring the banner back after dismissing it */
+.update-pill{position:fixed;right:14px;bottom:14px;z-index:199;
+  width:42px;height:42px;border-radius:50%;background:var(--blue);
+  border:none;color:#0a0a14;font-size:1.1rem;cursor:pointer;
+  box-shadow:0 2px 10px rgba(0,0,0,.4);display:none;
+  align-items:center;justify-content:center}
+.update-pill.show{display:flex}
+</style>
+</head>
+<body>
+
+<div id="screen-import">
+  <div class="imp-rune">⚔️</div>
+  <div class="imp-title">Combat Tracker</div>
+  <p class="imp-sub">
+    Exporta tu personaje desde Fight Club 5e:<br>
+    <code>Personaje → ··· → Exportar XML</code><br>
+    luego comparte o selecciona el archivo aquí.
+  </p>
+  <button class="btn-primary" onclick="document.getElementById('file-input').click()">
+    Seleccionar XML de FC5e
+  </button>
+  <input type="file" id="file-input" accept=".xml,text/xml,application/xml">
+  <p class="imp-hint">En Android, si instalaste esta PWA, FC5e puede<br>compartir el XML directamente aquí.</p>
+</div>
+
+<div id="screen-tracker">
+  <div class="header">
+    <button class="hdr-change" onclick="document.getElementById('file-input').click()" title="Cambiar personaje">⇄</button>
+    <div class="hdr-info">
+      <div class="hdr-name" id="hdr-name">—</div>
+      <div class="hdr-meta" id="hdr-meta">—</div>
+    </div>
+    <div class="round-ctrl">
+      <button class="round-btn" onclick="addRound(-1)">−</button>
+      <div class="round-display">Ronda <span id="hdr-round">1</span></div>
+      <button class="round-btn" onclick="addRound(1)">+</button>
+    </div>
+  </div>
+  <div class="content" id="content"></div>
+</div>
+
+<div id="toast"></div>
+<div id="trash-modal"></div>
+
+<div id="update-banner" class="update-banner">
+  <span class="update-banner-text">🔄 Hay una nueva versión disponible</span>
+  <div class="update-banner-actions">
+    <button class="update-btn-reload" onclick="reloadForUpdate()">Actualizar</button>
+    <button class="update-btn-dismiss" onclick="dismissUpdateBanner()" title="Ocultar">✕</button>
+  </div>
+</div>
+<button id="update-pill" class="update-pill" onclick="showUpdateBanner()" title="Hay una actualización pendiente">🔄</button>
+
+<script>
+// ═══════════════════════════════════════════════════
+//  HELPERS
+// ═══════════════════════════════════════════════════
+const $  = (el, sel) => el?.querySelector(sel)?.textContent?.trim() ?? '';
+const $$ = (el, sel) => [...(el?.querySelectorAll(sel) ?? [])];
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
+
+// ═══════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════
+let char = null;
+let G = { round:1, hp:null, tempHp:0, actionUsed:false, bonusUsed:false,
+  reactionUsed:false, oncePerTurn:{}, trackers:{}, showUtility:false,
+  collapsed:{}, triggerSel:{}, castLevel:{}, poolAmt:{},
+  hidden:{ abilities:{}, trackers:{} },
+  activeEffects:{}, encounterState:{ numTargets:1, targetParalyzed:false,
+    targetAsleep:false, targetProne:false, targetBlinded:false,
+    targetConc:false, alliesInRange:0 },
+  castTarget:{}, comboUsed:{}, lastSnapshot:null };
+
+// Maps populated on each render(), used by toggleDesc()
+let SHORT_DESC = {};
+let FULL_DESC  = {};
+// Populated fresh by renderSuggestions(); maps combo-button index -> steps
+let SUGGESTION_COMBOS = [];
+
+// HP calculator (not persisted — resets each session)
+let calcOpen = false;
+let calcExpr = '';
+
+// ═══════════════════════════════════════════════════
+//  XML PARSER
+// ═══════════════════════════════════════════════════
+const WEAPON_TYPES = new Set([5, 6]); // 5 = melee weapon, 6 = ranged weapon
+const FINESSE_BIT  = 2;
+const ABILITY_KEYS = ['str','dex','con','int','wis','cha'];
+const ABILITY_ES   = ['FUE','DES','CON','INT','SAB','CAR'];
+// ═══════════════════════════════════════════════════
+//  RESOURCE-POOL REGISTRY
+//  Replaces the old single broad RE_PC_TRACKER lookup, which picked
+//  the FIRST tracker matching ANY resource-sounding keyword anywhere on
+//  the whole character — fine for a single-resource character, but wrong
+//  the moment a character has two or more such pools.
+//
+//  Confirmed wrong on real data: Bo (Fighter/Psi Warrior) has both a
+//  "Superiority Die" tracker and a "Psionic Energy" tracker. His Psionic
+//  Power reaction (pc:1, text mentions "Psionic Energy") was silently
+//  decrementing Superiority Die instead, because that tracker happens to
+//  sit earlier in char.trackers. Multiclass casters (Dorym: Paladín +
+//  Hechicero) have the same risk between Canalizar Divinidad and Puntos
+//  de Hechicería.
+//
+//  Fix: every named FC5e resource pool gets its own entry here. Ability
+//  text is scanned (via detectResKey) for the SPECIFIC phrase that names
+//  which pool it spends from, and that key is stored on the ability
+//  (ab.resKey) at parse time. findResTracker(resKey) then looks up the
+//  tracker using ONLY that pool's own narrow regex — never "whichever
+//  matches first". Order below matters only as a tie-breaker when an
+//  ability's text happens to mention more than one pool's phrasing (rare);
+//  more specific patterns are listed first.
+// Display abbreviations match what was already shown before this fix
+// (pcAbbrev used to special-case "Concentración" → "PC" literally — kept
+// as-is here to avoid a gratuitous UI text change). "Canalizar Div." is
+// spelled out instead of abbreviated to "CD" because that exact badge
+// text is already used elsewhere for spell save DC (ab.dc) — reusing it
+// here would visually collide with that badge on the same ability card.
+// variableEligible: whether this pool has a genuine "spend a VARIABLE
+// amount" mechanic in 5e (Twinned Spell scales with target count, Psionic
+// power/Maneuvers can burn multiple dice, etc). Sorcery/psionic/
+// superiority do; Monk Focus and Channel Divinity options are always a
+// flat 1-per-use in actual game rules, so they're excluded here — see the
+// classifyTrigger() comment below for why this distinction matters.
+const RESOURCE_TYPES = [
+  { key:'sorcery',         abbrev:'PH',            textRe: /puntos? de hechicer[ií]a|sorcery points?/i,                          trackerRe: /hechicer|sorcery/i,                 variableEligible:true },
+  { key:'psionic',         abbrev:'dado psi.',      textRe: /psionic energy|punto(?:s)? de psi[oó]nica/i,                          trackerRe: /psionic energy|psi[oó]nica/i,       variableEligible:true },
+  { key:'superiority',     abbrev:'dado sup.',      textRe: /superiority dice?|dados? de superioridad/i,                           trackerRe: /superiority|superioridad/i,         variableEligible:true },
+  { key:'focus',           abbrev:'PC',             textRe: /puntos? de (?:concentraci[oó]n|enfoque)|focus points?/i,              trackerRe: /concentraci|enfoque|focus/i,        variableEligible:false },
+  { key:'channeldivinity', abbrev:'Canalizar Div.', textRe: /(?:usar|utilizar)\s+(?:tu\s+)?canalizar divinidad|use your channel divinity/i, trackerRe: /canalizar divinidad|channel divinity/i, variableEligible:false },
+];
+
+// Finds which (if any) named resource pool an ability's text refers to.
+// Returns the resKey string, or null if the text doesn't name a pool we
+// recognize (e.g. truly unnamed/generic homebrew resources) — callers
+// fall back to the legacy broad-match behavior in that case, same as
+// before this fix, so previously-working but unnamed cases don't regress.
+//
+// onlyVariableEligible restricts the search to pools that can plausibly
+// have a variable (player-chosen) cost — see classifyTrigger().
+function detectResKey(text, onlyVariableEligible) {
+  for (const r of RESOURCE_TYPES) {
+    if (onlyVariableEligible && !r.variableEligible) continue;
+    if (r.textRe.test(text)) return r.key;
+  }
+  return null;
+}
+
+// Legacy broad regex — kept ONLY as the last-resort fallback for
+// abilities whose text doesn't name a specific known pool (detectResKey
+// returns null). Equivalent to the original RE_PC_TRACKER behavior.
+const RE_PC_TRACKER_FALLBACK = /concentraci|psionic energy|puntos? de|superiority|hechicer/i;
+
+// Resolves the actual tracker object for a given resKey, narrowly. Falls
+// back to the old "first resource-looking tracker" behavior only when
+// resKey is null/unrecognized — see comment above.
+function findResTracker(resKey) {
+  if (resKey) {
+    const def = RESOURCE_TYPES.find(r => r.key === resKey);
+    if (def) {
+      const t = char.trackers.find(t => def.trackerRe.test(t.label));
+      if (t) return t;
+    }
+  }
+  return char.trackers.find(t => RE_PC_TRACKER_FALLBACK.test(t.label));
+}
+
+// Display abbreviation for a resource cost badge. Looks up the known
+// abbrev for resKey first; falls back to the tracker's own label (the old
+// pcAbbrev() behavior for unrecognized/homebrew pools) when resKey is
+// null/unmatched, then to a generic placeholder if there's no tracker at all.
+function resAbbrev(resKey, fallbackLabel) {
+  const def = RESOURCE_TYPES.find(r => r.key === resKey);
+  if (def) return def.abbrev;
+  return fallbackLabel || 'recurso';
+}
+
+function parseFC5eXML(xml) {
+  // Strip BOM and any leading whitespace/garbage before <?xml or <character
+  xml = xml.replace(/^\uFEFF/, '').trim();
+  const doc = new DOMParser().parseFromString(xml, 'text/xml');
+  const perr = doc.querySelector('parsererror');
+  if (perr) throw new Error('XML malformado — ' + perr.textContent.slice(0,150));
+
+  const ch = doc.querySelector('character');
+  if (!ch) throw new Error('No se encontró elemento character');
+
+  const name   = $(ch, 'name').split('||')[0].trim();
+  const hpMax  = parseInt($(ch, 'hpMax'))     || 10;
+  const hpCur  = parseInt($(ch, 'hpCurrent')) || hpMax;
+
+  const scores = $(ch, 'abilities').replace(/,$/, '').split(',').map(Number);
+  const [str, dex, con, int_, wis, cha] = scores;
+  const m = s => Math.floor((s - 10) / 2);
+  const mods = { str:m(str), dex:m(dex), con:m(con), int:m(int_), wis:m(wis), cha:m(cha) };
+
+  // ── Classes (multiclass support) ───────────────────
+  const classEls  = $$(ch, 'class');
+  const classInfo = classEls.map(c => ({
+    el:    c,
+    name:  $(c, 'name'),
+    level: parseInt($(c, 'level')) || 1
+  }));
+  const totalLevel = classInfo.reduce((s,c) => s + c.level, 0) || 1;
+  const cName = classInfo.map(c => `${c.name} ${c.level}`).join(' / ');
+  const prof  = Math.ceil(totalLevel / 4) + 1;
+  const raceName = $(ch.querySelector('race'), 'name');
+
+  // ── Trackers (per class, merged) ───────────────────
+  let trackers = [];
+  classInfo.forEach((ci, classIdx) => {
+    const cls = ci.el;
+
+    // Direct <tracker> children of <class> = the curated/selected resources
+    [...cls.children].forEach((c, i) => {
+      if (c.tagName.toLowerCase() !== 'tracker') return;
+      const label = $(c, 'label');
+      if (!label) return;
+      const type      = parseInt($(c, 'type'))      || 1;
+      const resetType = parseInt($(c, 'resetType')) || 0;
+      const value     = $(c, 'value') !== '' ? parseInt($(c, 'value')) : null;
+      const formula   = $(c, 'formula');
+      const fNum      = parseInt(formula);
+      const formulaIsNum = !isNaN(fNum) && String(fNum) === formula.trim();
+
+      let max, isDice = false, diceFmt = null;
+      if (type === 2 && /d/i.test(formula)) {
+        isDice = true; diceFmt = formula;
+        max = value ?? 0;
+      } else {
+        max = formulaIsNum ? fNum : (value ?? 0);
+      }
+
+      if (resetType > 0 && max > 0) {
+        trackers.push({
+          id:`t${classIdx}_${i}`, classIdx, label, type, resetType,
+          max, current:max, isDice, diceFmt
+        });
+      }
+    });
+  });
+
+  // De-duplicate trackers with same label (keep the one with the larger max)
+  const trackerByLabel = {};
+  trackers.forEach(t => {
+    const key = t.label.toLowerCase();
+    if (!trackerByLabel[key] || t.max > trackerByLabel[key].max) trackerByLabel[key] = t;
+  });
+  trackers = Object.values(trackerByLabel);
+
+  // ── Spell slot trackers (from top-level <slots>, levels 1-9) ──
+  // FC5e stores [idx0=?, lvl1, lvl2, ..., lvl9] — index 0 is not a slot level.
+  // IMPORTANT: <class> elements also contain their own <slots>, so we must
+  // only read the DIRECT child of <character>, not the first descendant match.
+  const topSlotsEl = [...ch.children].find(c => c.tagName.toLowerCase() === 'slots');
+  const slotsArr = (topSlotsEl?.textContent.trim() || '').replace(/,$/, '').split(',').map(n => parseInt(n) || 0);
+  let maxSpellLevel = 0;
+  for (let lvl = 1; lvl <= 9; lvl++) {
+    const max = slotsArr[lvl] || 0;
+    if (max > 0) {
+      maxSpellLevel = lvl;
+      trackers.push({
+        id:`sl${lvl}`, label:`Espacios Nv.${lvl}`, type:1, resetType:2,
+        max, current:max, isDice:false, diceFmt:null, isSpellSlot:true, spellLevel:lvl
+      });
+    }
+  }
+
+  // ── Pact Magic slots (Warlock) ──────────────────────
+  // Pact Magic is a SEPARATE, independently-recharging slot pool — by RAW
+  // it's explicitly excluded from the normal multiclass spell-slot table,
+  // confirmed empirically: a pure 20th-level Warlock's top-level <slots>
+  // above reads ALL ZEROS. The real slots live on the <class> element's
+  // OWN <slots>/<slotsreset> pair instead (slotsreset:1 = short rest —
+  // same 1=short/2=long convention used by <tracker><resetType> elsewhere).
+  // Non-Pact classes (checked against Dorym, a real multiclass caster)
+  // never carry a <slotsreset> tag at all, so this block is a no-op for
+  // them — only classes that genuinely have an independent recharge cycle
+  // light it up.
+  //
+  // Kept in a SEPARATE tracker id namespace (pactsl#, not sl#) rather than
+  // merged into the regular sl# trackers: a Warlock/caster multiclass can
+  // have a Pact slot and a normal slot at the very same nominal level
+  // simultaneously (e.g. both 1st level), and those are two genuinely
+  // distinct pools on a real character sheet — collapsing them into one
+  // shared count would silently merge a short-rest pool with a long-rest
+  // one. pactInfoByClassIdx lets the spell-parsing loop below tag which
+  // spells should draw from the Pact pool instead of the normal one.
+  const pactInfoByClassIdx = {};
+  classInfo.forEach((ci, classIdx) => {
+    const resetEl = [...ci.el.children].find(c => c.tagName.toLowerCase() === 'slotsreset');
+    const resetType = resetEl ? (parseInt(resetEl.textContent) || 2) : 0;
+    if (resetType <= 0) return; // no independent recharge cycle declared — not a Pact-style pool
+
+    const ownSlotsEl = [...ci.el.children].find(c => c.tagName.toLowerCase() === 'slots');
+    const ownArr = (ownSlotsEl?.textContent.trim() || '').replace(/,$/, '').split(',').map(n => parseInt(n) || 0);
+    // RAW Pact Magic only ever has ONE active slot level at a time (it's
+    // replaced wholesale as the Warlock levels up), but scan for the
+    // highest non-zero entry rather than assuming a fixed index, in case
+    // some homebrew "spread" variant ever populates more than one.
+    let level = 0, max = 0;
+    for (let lvl = 1; lvl <= 9; lvl++) {
+      if ((ownArr[lvl] || 0) > 0) { level = lvl; max = ownArr[lvl]; }
+    }
+    if (level === 0) return;
+
+    pactInfoByClassIdx[classIdx] = { level, max, resetType };
+    // Folded into the SAME ceiling as normal slots (not tracked separately)
+    // since every place that reads char.maxSpellLevel to cap an upcast
+    // stepper still looks the resulting level up via the 'sl' prefix only
+    // (never 'pactsl') — so on a pure Warlock or any character without
+    // overlapping pools this is exactly right, and on a hypothetical
+    // Warlock/caster multiclass (no test data for this combo yet) the
+    // worst case is a normal-spell upcast stepper that *displays* one
+    // extra selectable level than the character truly has, which simply
+    // shows as locked (no tracker found) rather than mis-spending anything.
+    maxSpellLevel = Math.max(maxSpellLevel, level);
+    trackers.push({
+      id:`pactsl${level}`, label:`Espacios de Pacto Nv.${level}`, type:1, resetType,
+      max, current:max, isDice:false, diceFmt:null, isSpellSlot:true, spellLevel:level, isPactMagic:true
+    });
+  });
+
+  // ── Feats: direct <feat> children of <class> = curated/selected list ──
+  // (autolevel dumps EVERY subclass option; direct children only contain
+  //  what was actually chosen for this character)
+  const allFeats = [];
+  classInfo.forEach((ci, classIdx) => {
+    let direct = [...ci.el.children].filter(c => c.tagName.toLowerCase() === 'feat');
+    if (direct.length === 0) {
+      // Fallback: very old / minimal exports — scan autolevel
+      direct = $$(ci.el, 'feat');
+    }
+    direct.forEach(f => {
+      const n = $(f,'name'), tx = $(f,'text');
+      if (n.length > 1) allFeats.push({ name:n, text:tx, source:'class', classIdx });
+    });
+  });
+  ['race','background'].forEach(src => {
+    $$(ch.querySelector(src), 'feat').forEach(f => {
+      const n = $(f,'name'), tx = $(f,'text');
+      if (n.length > 1) allFeats.push({ name:n, text:tx, source:src });
+    });
+  });
+
+  // ── Items: non-weapon feats + weapon attacks + global spell mods ──
+  const allItems = $$(ch, 'item');
+  const itemFeats = [];
+  const weapons   = [];
+  let spellDcBonus = 0, spellAtkBonus = 0;
+
+  // ── Armor Class calculation ──────────────────────────────────────
+  // FC5e equipped items: <slot>5</slot> = body armor, <type>14</type> with
+  // <ac>>0 = shield, slot=1 accessories with mod<type>10</type> = Ring of
+  // Protection etc. Weapon items (type 5/6/7) also carry mod10 for their
+  // magic bonus (+2 weapon) — NOT an AC bonus; excluded by type filter.
+  //
+  //  Armor types:  1 = LA (base + full DEX), 2 = MA (base + DEX max +2), 3 = HA (base only)
+  //  Shield contribution: <ac> field (never mod10, which is redundant on shields)
+  //  Magic armor bonus: mod<type>10</type> on the ARMOR item itself (slot=5)
+  //  Accessory AC bonus: mod<type>10</type> on non-weapon slot=1 items
+  const WEAPON_ITEM_TYPES = new Set([5, 6, 7]);
+  let armorBaseAC = 0, armorType = 0, armorMagicBonus = 0;
+  let shieldAC = 0, accessoryACBonus = 0;
+  let hasBodyArmor = false;
+  allItems.forEach(it => {
+    const itType = parseInt($(it,'type'));
+    const itSlot = parseInt($(it,'slot')) || 0;
+    const itAC   = parseInt($(it,'ac'))   || 0;
+    if (!itSlot) return;
+
+    if (itSlot === 5 && itAC > 0) {
+      // Body armor
+      armorBaseAC = itAC; armorType = itType; hasBodyArmor = true;
+      $$(it,'mod').forEach(md => {
+        const mt = parseInt($(md,'type')) || 0;
+        const mv = $(md,'value') !== '' ? parseInt($(md,'value')) : 0;
+        if (mt === 10 && mv > 0) armorMagicBonus += mv;
+      });
+    } else if (itType === 14 && itAC > 0) {
+      // Shield: use <ac> directly — its mod10 is redundant (same value)
+      shieldAC = Math.max(shieldAC, itAC);
+    } else if (!WEAPON_ITEM_TYPES.has(itType) && itSlot === 1) {
+      // Accessory (ring, amulet, belt…): only mod type=10 contributes AC
+      $$(it,'mod').forEach(md => {
+        const mt = parseInt($(md,'type')) || 0;
+        const mv = $(md,'value') !== '' ? parseInt($(md,'value')) : 0;
+        if (mt === 10 && mv > 0) accessoryACBonus += mv;
+      });
+    }
+  });
+
+  const dexMod = Math.floor((scores[1] - 10) / 2);
+  const wisMod = Math.floor((scores[4] - 10) / 2);
+  const conMod = Math.floor((scores[2] - 10) / 2);
+  let computedAC = 0;
+  if (hasBodyArmor) {
+    computedAC = armorBaseAC + armorMagicBonus;
+    if (armorType === 1) computedAC += dexMod;                 // LA: full DEX
+    else if (armorType === 2) computedAC += Math.min(dexMod, 2); // MA: DEX max +2
+    // HA (type 3): no DEX bonus
+  } else {
+    // Unarmored Defense: detect from class feats (Monk = DEX+WIS, Barb = DEX+CON)
+    const unarmoredFeat = allFeats.find(f =>
+      /defensa sin armadura|unarmored defense/i.test(f.name)
+    );
+    if (unarmoredFeat) {
+      const txt = unarmoredFeat.text;
+      if (/wisdom|sabidur[ií]a/i.test(txt)) computedAC = 10 + dexMod + wisMod; // Monk
+      else if (/constitution|constituci[oó]n/i.test(txt)) computedAC = 10 + dexMod + conMod; // Barbarian
+      else computedAC = 10 + dexMod;
+    } else {
+      computedAC = 10 + dexMod;
+    }
+  }
+  computedAC += shieldAC + accessoryACBonus;
+
+  allItems.forEach(it => {
+    const itName = $(it,'name'), itText = $(it,'text');
+    const type   = parseInt($(it,'type'));
+
+    // Global spellcasting modifiers (type 7 = Spell Save DC, type 8 = Spell Attack)
+    $$(it,'mod').forEach(md => {
+      const mt = parseInt($(md,'type')) || 0;
+      const mv = $(md,'value') !== '' ? parseInt($(md,'value')) : 0;
+      if (mt === 7) spellDcBonus  += mv;
+      if (mt === 8) spellAtkBonus += mv;
+    });
+
+    if (WEAPON_TYPES.has(type) && $(it,'damage1H')) {
+      weapons.push({
+        name: itName,
+        type,
+        damage1H: $(it,'damage1H'),
+        damage2H: $(it,'damage2H'),
+        weaponProperty: parseInt($(it,'weaponProperty')) || 0,
+        mods: $$(it,'mod').map(md => ({
+          type:  parseInt($(md,'type')) || 0,
+          value: $(md,'value') !== '' ? parseInt($(md,'value')) : null
+        }))
+      });
+    } else if (itName && itText) {
+      itemFeats.push({ name:itName, text:itText, source:'item' });
+    }
+  });
+
+  // ── Spells: direct <spell> children of each <class> ─────────────
+  const spellEntries = [];
+  const spellDC = {}; // abilityIdx -> { dc, atk }
+  classInfo.forEach((ci, classIdx) => {
+    const direct = [...ci.el.children].filter(c => c.tagName.toLowerCase() === 'spell');
+    if (!direct.length) return;
+
+    const saIdx = parseInt($(ci.el, 'spellAbility'));
+    let abilityIdx = (saIdx >= 0 && saIdx <= 5) ? saIdx : null;
+
+    if (abilityIdx !== null && !spellDC[abilityIdx]) {
+      const abMod = mods[ABILITY_KEYS[abilityIdx]];
+      spellDC[abilityIdx] = {
+        dc:  8 + prof + abMod + spellDcBonus,
+        atk: prof + abMod + spellAtkBonus
+      };
+    }
+
+    const pactLevel = pactInfoByClassIdx[classIdx]?.level || null;
+
+    direct.forEach((s, i) => {
+      const sName = $(s,'name'), sText = $(s,'text');
+      if (!sName || !sText) return;
+      spellEntries.push({
+        id:`sp${classIdx}_${i}`,
+        name: sName.trim(),
+        text: sText,
+        level: parseInt($(s,'level')) || 0,
+        time: $(s,'time'),
+        range: $(s,'range'),
+        duration: $(s,'duration'),
+        ritual: $(s,'ritual') === '1',
+        rolls: $$(s,'roll').map(r => r.textContent.trim()).filter(Boolean),
+        abilityIdx,
+        pactSlotLevel: pactLevel
+      });
+    });
+  });
+
+  // ── Custom resource pools (Lay on Hands, item charges, etc.) ──
+  // MUST run BEFORE buildAbilities so that when buildAbilities searches
+  // trackers for ownPool matches (to fix the Imponer las Manos → PH
+  // collision), the pool trackers already exist in the array.
+  const poolSeen = new Set();
+  [...allFeats, ...itemFeats].forEach((e, i) => {
+    const key = e.name.toLowerCase();
+    if (poolSeen.has(key)) return;
+    const pool = detectResourcePool(e.name, e.text, classInfo, totalLevel, mods, prof);
+    if (!pool) return;
+    poolSeen.add(key);
+    trackers.push({
+      id:`pool${i}`, label: pool.label, type:1, resetType: pool.resetType,
+      max: pool.max, current: pool.max, isDice:false, diceFmt:null, isPool:true,
+      dawnDice: pool.dawnDice || null
+    });
+  });
+
+  // Trackers are now complete (native + pool-synthesized); pass them to
+  // buildAbilities so ownPool detection works correctly.
+  const abilities = buildAbilities(
+    [...allFeats, ...itemFeats], totalLevel, mods, prof, weapons, spellEntries, spellDC, trackers
+  );
+
+  return { name, hpMax, hpCur, cName, cLvl:totalLevel, classInfo, raceName, prof, mods, trackers, abilities, spellDC, maxSpellLevel, ac:computedAC };
+}
+
+// ── Classify a single ability text ──────────────────
+const RE_REACTION = /as a reaction|use (?:your|a) reaction|your reaction to|como reacci[oó]n|reacci[oó]n\s*[-\u2013]|llevar a cabo una reacci/i;
+const RE_BONUS    = /as a bonus action|bonus action to|bonus action on your turn|acci[oó]n adicional|acci[oó]n adici[oó]nal|parte de la acci[oó]n adicional/i;
+const RE_ACTION   = /as an action[^s]|using an action|as your action|como acci[oó]n[^e]|llevar a cabo la acci[oó]n/i;
+
+function detectAction(name, text) {
+  if (RE_REACTION.test(text)) return 'reaction';
+  if (RE_BONUS.test(text))    return 'bonus';
+  if (RE_ACTION.test(text))   return 'action';
+  return null;
+}
+
+// ── Classify a spell by its <time> field ────────────
+function detectSpellTime(time) {
+  const tl = (time || '').toLowerCase();
+  if (/reacci|reaction/.test(tl)) return 'reaction';
+  if (/bonus action|acci[oó]n adicional/.test(tl)) return 'bonus';
+  if (/action|acci[oó]n/.test(tl)) return 'action';
+  return 'utility'; // rituals, "X minutes/hours" — outside the turn structure
+}
+
+// ── PC / resource cost detection ────────────────────
+// "Channel Divinity" usage was previously excluded here because the old
+// single shared RE_PC_TRACKER lookup couldn't tell two resource pools
+// apart on the same character (see RESOURCE_TYPES above for the full
+// story — confirmed colliding with Puntos de Hechicería on Dorym, a
+// Paladín/Hechicero). Now that every ability carries its own resKey and
+// findResTracker() looks up ONLY that pool, it's safe to detect again.
+function detectPCCost(text) {
+  const m = text.toLowerCase().match(/(?:gastar|gastando|expend)\s+(?:one|1|(\d+))\s+(?:punto|p\.c\.|psionic energy|superiority)/);
+  if (m) return m[1] ? parseInt(m[1]) : 1;
+  if (/(?:usar|utilizar)\s+(?:tu\s+)?canalizar divinidad|use your channel divinity/i.test(text)) return 1;
+  return 0;
+}
+
+// ═══════════════════════════════════════════════════
+//  "FREE ACTION" / TRIGGERED FEATURE DETECTION
+//  Features that DON'T consume the action economy but
+//  DO spend a resource when a trigger condition is met
+//  (Divine Smite, Metamagic, etc.)
+// ═══════════════════════════════════════════════════
+const RE_TRIGGER_WORD    = /\bcuando\b|\bwhen you\b|inmediatamente (?:despu[eé]s|cuando)|immediately after/i;
+const RE_SLOTSPEND_SRC   = 'gastar(?:le)?\\s+(?:uno de tus |un )?espacios? de conjuro|expend(?:ing)?\\s+a\\s+spell\\s+slot|consumir(?:[aá]s)?\\s+.*espacio\\s+de\\s+conjuro';
+// (RE_VARIABLE_RES removed — superseded by detectResKey()/RESOURCE_TYPES above,
+// which both detects AND identifies which specific pool an ability draws from)
+const RE_METAMAGIC_CTX   = /lanzas un conjuro|cast(?:ing)? a (?:sorcerer )?spell/i;
+
+// Same phrase as RE_SLOTSPEND_SRC, but rejects matches preceded by a
+// negation ("sin gastar"/"without expending") within a short window.
+// Without this, free innate-casting traits (Drow High Magic, Fey
+// Teleportation — "cast X once, sin gastar un espacio de conjuro") get
+// misclassified as Divine-Smite-style triggers, since they're the OPPOSITE:
+// spending NO slot at all, not spending one to add bonus damage.
+function hasRealSlotSpend(text) {
+  const re = new RegExp(RE_SLOTSPEND_SRC, 'gi');
+  let m;
+  while ((m = re.exec(text))) {
+    const before = text.slice(Math.max(0, m.index - 20), m.index);
+    if (/\b(sin|without)\b/i.test(before)) continue;
+    return true;
+  }
+  return false;
+}
+
+// "You can cast spell X once with this trait, and regain the ability when
+// you finish a short/long rest" — the standard racial innate-spellcasting
+// pattern (Drow High Magic, Tiefling/Genie lineages, Fey Ancestry variants,
+// etc). Not a spell-slot spend, not a fixed/variable point cost, not the
+// "N times your level" pool formula — none of our other detectors catch
+// it, so today these abilities show up with no usage tracking at all.
+//
+// Requires "cast"/"lanzar" near "once"/"una vez" (not just "once" anywhere
+// in the text) — caught during testing against the Test_PC druid corpus:
+// several HB/TP subclass features use "...a number of times equal to your
+// Wisdom modifier (minimum of once), and you regain..." which has no
+// casting verb at all but would otherwise false-positive on a bare
+// once+regain+rest scan, and wrongly collapse a scaling pool into a
+// 1-charge tracker. Returns a resetType (1=short, 2=long), or null.
+const RE_INNATE_SPELL_ANCHOR = /\bcast\b[\s\S]{0,60}?\bonce\b|\blanzar\b[\s\S]{0,60}?\buna vez\b/gi;
+
+function detectInnateSpellUse(text) {
+  const re = new RegExp(RE_INNATE_SPELL_ANCHOR.source, 'gi');
+  let m;
+  while ((m = re.exec(text))) {
+    const isSpanish = /una vez/i.test(m[0]);
+    const onceIdx = text.toLowerCase().indexOf(isSpanish ? 'una vez' : 'once', m.index);
+    const before = text.slice(Math.max(0, onceIdx - 20), onceIdx);
+    if (/minimum of\s*$|m[ií]nimo de\s*$/i.test(before)) continue; // variable-size pool, not innate cast
+    const after = text.slice(m.index, m.index + 300);
+    const restMatch = after.match(/\bregain\b[\s\S]{0,80}?\b(short|long)\s+rest|\brecuperas\b[\s\S]{0,80}?\bdescanso\s+(corto|largo)/i);
+    if (restMatch) {
+      const word = (restMatch[1] || restMatch[2] || '').toLowerCase();
+      return { resetType: (word === 'short' || word === 'corto') ? 1 : 2 };
+    }
+  }
+  return null;
+}
+
+// Parses "Xd Y for/at level 1, plus Zd Y for each level above, up to N d Y"
+// style scaling text (Divine Smite and similar). Returns null if the text
+// doesn't match this pattern.
+function detectScalingDamage(text) {
+  const diceRe = /(\d+)d(\d+)/g;
+  let m, base = null, perLevel = null, max = null;
+  while ((m = diceRe.exec(text))) {
+    const before = text.slice(Math.max(0, m.index - 35), m.index);
+    const after  = text.slice(m.index + m[0].length, m.index + m[0].length + 55);
+    const entry = { n:+m[1], die:+m[2] };
+    if (/m[aá]ximo (?:de|of)\s*$|maximum of\s*$/i.test(before)) {
+      max = entry;
+    } else if (!base && /^[^.]*(?:nivel|level)\s*1\b|^[^.]*1(?:st|°|º)?.?\s*level/i.test(after)) {
+      base = entry;
+    } else if (!perLevel && /^[^.]*(?:por cada nivel|each (?:spell )?level|cada nivel adicional)/i.test(after)) {
+      perLevel = entry;
+    }
+  }
+  if (base && perLevel) {
+    let maxN = base.n + 8 * perLevel.n, maxLevel = 9;
+    if (max) { maxN = max.n; maxLevel = 1 + Math.round((max.n - base.n) / perLevel.n); }
+    return { die: base.die, baseN: base.n, perLevelN: perLevel.n, maxN, maxLevel: Math.min(9, maxLevel) };
+  }
+  return null;
+}
+
+// Classifies a feat that detectAction() couldn't place into action/bonus/
+// reaction as a "trigger" — something that fires off another event
+// (a hit, casting a spell, etc.) and spends a resource instead of a slot
+// in the turn structure.
+// Same phrase as RE_SLOTSPEND_SRC, used to catch the NEGATED case (free
+// innate casting — Star Map, Draconic Gift's Fog/Invisibility options,
+// Drow High Magic) even though hasRealSlotSpend() correctly rejects it as
+// a Smite-style trigger. Their actual usage limits vary too much to model
+// generically yet (fixed 1, proficiency-bonus-sized, tied to another
+// resource's duration) — but without this, they'd vanish from the trigger
+// list entirely (confirmed against 5 real Test_PC druid features:
+// Star Map, Draconic Gift, Gift of the Green, Walker in Dreams, Verdant
+// Grasp), which is worse than showing them untracked.
+const RE_FREE_INNATE_CAST = /(?:cast|lanza(?:r|s)?)[\s\S]{0,80}?(?:without expending|sin gastar)[\s\S]{0,30}?(?:spell slot|espacio de conjuro)/i;
+
+function classifyTrigger(text) {
+  // Checked BEFORE the RE_TRIGGER_WORD gate below: "cast X once without
+  // expending a spell slot" is a strong enough standalone signal on its
+  // own — it doesn't need "cuando"/"when you" framing to mean something.
+  // Confirmed needed on real data: Warlock's Mystic Arcanum is curated as
+  // 4 near-identical feats (6th/7th/8th/9th tier). Only the 6th-tier entry
+  // happens to ALSO contain a trailing "...when you finish a long rest"
+  // sentence (a scaling note that mentions the other 3 tiers); the 7th/8th
+  // /9th tier entries are shorter and never say "cuando"/"when you" at
+  // all. Gating on RE_TRIGGER_WORD first meant 3 of the 4 real tiers were
+  // silently dropped (matched neither detectAction nor classifyTrigger),
+  // even though their matching trackers were already being synthesized
+  // correctly by detectResourcePool — the ability just never displayed.
+  if (RE_FREE_INNATE_CAST.test(text)) {
+    return { triggerKind:'free', pc:0, scaling:null, variablePC:false, resKey:null };
+  }
+  if (!RE_TRIGGER_WORD.test(text)) return null;
+
+  if (hasRealSlotSpend(text)) {
+    return { triggerKind:'smite', pc:0, scaling: detectScalingDamage(text), variablePC:false, resKey:null };
+  }
+  const fixedPC = detectPCCost(text);
+  const isMeta  = RE_METAMAGIC_CTX.test(text);
+  if (fixedPC > 0) {
+    // detectPCCost already required an explicit spend verb ("gastar"/
+    // "expend"/"usar Canalizar Divinidad"), so any resKey it implies is safe.
+    return { triggerKind: isMeta ? 'metamagic' : 'resource', pc:fixedPC, scaling:null, variablePC:false, resKey: detectResKey(text) };
+  }
+  // Fallback: no fixed count found, but the text might still describe a
+  // variable-cost spend (Conjuro Gemelo/Twinned Spell scales with target
+  // level, etc). Restricted to variableEligible pools ONLY — confirmed
+  // false-positive on Rhyo otherwise: "Metabolismo Asombroso" mentions
+  // "puntos de concentración" but only to describe REGAINING them
+  // ("puedes recuperar todos los puntos... gastados"), not spending any.
+  // There's no real 5e mechanic for variable-cost Focus/Channel Divinity
+  // spends, so excluding those two keys here removes the false trigger
+  // without needing fragile spend-vs-regain verb detection on free text.
+  const resKey = detectResKey(text, /*onlyVariableEligible=*/true);
+  if (resKey) {
+    return { triggerKind: isMeta ? 'metamagic' : 'resource', pc:0, scaling:null, variablePC:true, resKey };
+  }
+  return null;
+}
+
+// ═══════════════════════════════════════════════════
+//  CUSTOM RESOURCE POOL / CHARGES DETECTION
+//  Features like Lay on Hands ("a pool equal to five times
+//  your paladin level") or items with N charges become extra
+//  trackers, independent of their action-economy classification.
+// ═══════════════════════════════════════════════════
+const NUM_WORDS = { uno:1,dos:2,tres:3,cuatro:4,cinco:5,seis:6,siete:7,ocho:8,nueve:9,diez:10,
+  one:1,two:2,three:3,four:4,five:5,six:6,seven:7,eight:8,nine:9,ten:10 };
+
+// Multiplier × class-level pool (e.g. "five times your paladin level").
+// Guard: the match must appear in a USES context (preceded by "pool", "uses",
+// "number of", or "reserva" within 120 chars) — confirmed false-positive
+// without this on Doomsday Device (HB Artificer), where "five times your
+// artificer level" describes the HP of a constructed device, and "pool"
+// appears later as flavor text ("a pool of acid"). The nearby-word check
+// replaces the old whole-text RE_POOL_WORD scan.
+const RE_POOL_LEVEL = /(\d+|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|one|two|three|four|five|six|seven|eight|nine|ten)\s*(?:veces|times|[×x])\s*(?:tu nivel de\s+([a-záéíóúñ]+)|your\s+([a-z]+)\s+level)/i;
+const RE_POOL_CONTEXT = /\b(?:pool|reserva|piscina|uses?|usos?|number of charges|cargas?)\b/i;
+
+// Charges ("has N charges"). Guard: if "this item"/"this weapon"/"this armor"/
+// "this device" immediately precedes the match, it's describing an ITEM's
+// stats inside a feat's d20 table, not the feature's own uses — confirmed on
+// Expanded Contraptions (HB Artificer): "This item has 4 charges".
+// Intentionally does NOT block "the staff has 10 charges" or generic "the
+// [noun] has N charges" — those are legitimate item pools (Staff of the
+// Woodlands). Only "this [category]" (pointing to a table entry) is excluded.
+const RE_CHARGES = /(?:tiene|has|with)\s+(\d+)\s+(?:cargas?|charges)/i;
+const RE_CHARGES_ITEM_PREFIX = /\bthis\s+(?:item|weapon|armor|device|cantrip|tool)\s*$/i;
+
+// "N times equal to your [ability] modifier (minimum of once)" and
+// "N times equal to your proficiency bonus" — confirmed needed against
+// ALL six characters in the corpus: Bo (STR/CON/WIS), Rhyo (WIS/CON
+// via Focus), Dorym (CHA), Test_PC Druid (WIS/PB), Warlock (CHA/PB),
+// and 38 feats in the Artificer (INT/PB). Currently NONE of these produce
+// a tracker unless they also happen to have a native <tracker> element —
+// the feature displays but with no visible usage limit.
+//
+// "minimum of once"/"minimum of 1" guard prevents synthesizing a tracker
+// for abilities that just mention "healing equal to your INT modifier" or
+// "damage equal to your CHA modifier" — those contain the same phrase
+// structure but are NOT pool-size formulas.
+const RE_SCALING_BY_MOD = /number of times equal to(?:\s+(?:twice|double|half))?\s+your\s+(strength|dexterity|constitution|intelligence|wisdom|charisma|str|dex|con|int|wis|cha)\s+modifier|veces igual a tu modificador de\s+(fuerza|destreza|constituci[oó]n|inteligencia|sabidur[ií]a|carisma)/i;
+const RE_SCALING_BY_PROF = /number of times equal to your proficiency bonus|veces igual a tu bono de competencia/i;
+const RE_SCALING_REGAIN = /\bregain(?:\s+all)?\s+(?:expended\s+)?uses|\brecuperas?\s+(?:todos\s+los\s+usos|las\s+cargas?)/i;
+
+// Multiplier modifiers for "twice/double/half" variants
+const RE_SCALING_MULT = /\b(twice|double)\b/i;
+const RE_SCALING_HALF = /\bhalf\b/i;
+
+const ABILITY_MOD_NAME = {
+  strength:'str', str:'str', fuerza:'str',
+  dexterity:'dex', dex:'dex', destreza:'dex',
+  constitution:'con', con:'con', 'constituci\u00f3n':'con', constitucion:'con',
+  intelligence:'int', int:'int', inteligencia:'int',
+  wisdom:'wis', wis:'wis', 'sabidur\u00eda':'wis', sabiduria:'wis',
+  charisma:'cha', cha:'cha', carisma:'cha'
+};
+
+function stripAccents(s) {
+  return (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+}
+
+// Returns a tracker-shaped object, or null if no pool/charges pattern found.
+// mods and prof are passed through from parseFC5eXML to resolve scaling formulas.
+function detectResourcePool(name, text, classInfo, totalLevel, mods, prof) {
+  const resetType = /short rest|descanso corto/i.test(text) ? 1 : 2;
+
+  // ── Multiplier × level (e.g. "five times your paladin level") ──────
+  const m1 = text.match(RE_POOL_LEVEL);
+  if (m1) {
+    // Require pool-context word within 120 chars of the match (not anywhere
+    // in the full feat text, to avoid matching HP formulas of summoned creatures)
+    const nearCtx = text.slice(Math.max(0, m1.index - 120), m1.index + 120);
+    if (RE_POOL_CONTEXT.test(nearCtx)) {
+      const raw = m1[1].toLowerCase();
+      const mult = NUM_WORDS[raw] ?? parseInt(raw);
+      const classWord = stripAccents(m1[2] || m1[3] || '');
+      let lvl = totalLevel;
+      const match = classInfo.find(ci => {
+        const cw = stripAccents(ci.name).trim();
+        return cw && (cw.includes(classWord) || classWord.includes(cw));
+      });
+      if (match) lvl = match.level;
+      else if (classInfo.length === 1) lvl = classInfo[0].level;
+      const max = mult * lvl;
+      if (max > 0) return { label:name, max, resetType, isPool:true };
+    }
+  }
+
+  // ── N charges on an item/feature ────────────────────────────────
+  const m2 = text.match(RE_CHARGES);
+  if (m2) {
+    const before30 = text.slice(Math.max(0, m2.index - 30), m2.index);
+    if (!RE_CHARGES_ITEM_PREFIX.test(before30)) {
+      const max = parseInt(m2[1]);
+      // Detect partial/random recharge at dawn: "regains 1d6 + 4 expended charges daily at dawn"
+      const dawnM = text.match(/regains?\s+([\dd +\-]+?)\s+expended charges?(?:\s+daily)?\s+at dawn|recupera\s+([\dd +\-]+?)\s+cargas?(?:\s+gastadas?)?(?:\s+diariamente)?\s+al amanecer/i);
+      const dawnDice = dawnM ? (dawnM[1] || dawnM[2] || '').trim() : null;
+      if (max > 0) return { label:name, max, resetType, isPool:true, dawnDice };
+    }
+  }
+
+  // ── N times equal to [ability modifier / proficiency bonus] ─────
+  // Only synthesize a pool when the text also contains a regain-uses
+  // phrase ("regain all expended uses when you finish a rest") — this
+  // guards against false matches where "N times equal to your X modifier"
+  // describes a damage bonus or healing amount, not a use-count formula.
+  if (mods && RE_SCALING_REGAIN.test(text)) {
+    const mMod = text.match(RE_SCALING_BY_MOD);
+    if (mMod) {
+      const rawName = stripAccents(mMod[1] || mMod[2] || '');
+      const key = ABILITY_MOD_NAME[rawName];
+      if (key && mods[key] !== undefined) {
+        // "twice/double your X modifier" or "half your X modifier" variants
+        const multStr = text.slice(Math.max(0, mMod.index - 30), mMod.index);
+        let base = mods[key];
+        if (RE_SCALING_MULT.test(multStr)) base = base * 2;
+        else if (RE_SCALING_HALF.test(multStr)) base = Math.ceil(base / 2);
+        const max = Math.max(1, base);   // "minimum of once" → at least 1
+        return { label:name, max, resetType, isPool:true };
+      }
+    }
+    const mProf = text.match(RE_SCALING_BY_PROF);
+    if (mProf && prof) {
+      return { label:name, max: Math.max(1, prof), resetType, isPool:true };
+    }
+  }
+
+  // ── Innate spellcasting (racial "cast once, regain on rest") ─────
+  const innate = detectInnateSpellUse(text);
+  if (innate) return { label:name, max:1, resetType:innate.resetType, isPool:true };
+
+  return null;
+}
+
+// ── Short description from full text ───────────────
+function shortDesc(text) {
+  const clean = text.replace(/\n/g,' ').replace(/\s+/g,' ').trim();
+  const m = clean.match(/^.{20,140}?[.!?]/);
+  if (m) return m[0];
+  return clean.slice(0, 130) + (clean.length > 130 ? '…' : '');
+}
+function fullDescClean(text) {
+  return text.replace(/\n{2,}/g,'\n').trim();
+}
+
+// ═══════════════════════════════════════════════════
+//  ACTIVE EFFECTS ENGINE
+// ═══════════════════════════════════════════════════
+//  G.activeEffects = {
+//    [id]: { id, label, sourceId, concentration, duration,
+//             roundsLeft, appliesTo, mechanicFlags:[] }
+//  }
+//  G.encounterState = {
+//    targetParalyzed: bool, targetAsleep: bool,
+//    targetProne: bool, targetBlinded: bool,
+//    targetConc: bool, numTargets: int, alliesInRange: int
+//  }
+//
+//  mechanicFlags (strings consumed by buildSuggestions):
+//    'extra_attack_action'    → Haste: 1 acción extra de ataque por turno
+//    'double_speed'           → Haste: velocidad x2
+//    'prevents_spellcasting'  → Rabia: no puede lanzar conjuros
+//    'advantage_atk'          → ventaja en ataques (invisible, Blessing…)
+//    'disadvantage_atk'       → desventaja en ataques
+//    'bps_resistance'         → resistencia a cortante/perforante/contundente
+//    'advantage_saving'       → ventaja en saving throws
+//    'ac_bonus'               → bonus de CA mientras activo
+//    'atk_bonus'              → bonus a ataques mientras activo
+//    'crit_range_19'          → crítico en 19-20 (Champion Fighter, etc.)
+//    'additional_spell_action' → puede lanzar un conjuro adicional (acción del hechizo)
+//    'temp_hp_regen'          → regenera THP cada turno
+// ═══════════════════════════════════════════════════
+
+// EFFECT_CATALOG: named effect templates.
+// Each ability/spell that generates an effect refers to one of these by key.
+// The parser tags abilities at parse-time with an 'effectKey' field; the
+// render uses that to offer an "Activar efecto" button; G.activeEffects
+// stores the live instance with its runtime state.
+const EFFECT_CATALOG = {
+  haste_self: {
+    label: '⚡ Acelerar (propio)',
+    mechanicFlags: ['extra_attack_action', 'double_speed', 'ac_bonus'],
+    concentration: true,
+    appliesTo: 'self'
+  },
+  haste_ally: {
+    label: '⚡ Acelerar (aliado)',
+    mechanicFlags: [],           // no self-benefit
+    concentration: true,
+    appliesTo: 'ally'
+  },
+  rage: {
+    label: '🔥 Rabia',
+    mechanicFlags: ['advantage_atk', 'bps_resistance', 'prevents_spellcasting'],
+    concentration: false,
+    appliesTo: 'self'
+  },
+  bless: {
+    label: '✨ Bendición (propio)',
+    mechanicFlags: ['advantage_saving', 'atk_bonus'],
+    concentration: true,
+    appliesTo: 'self'
+  },
+  bless_ally: {
+    label: '✨ Bendición (aliados)',
+    mechanicFlags: [],
+    concentration: true,
+    appliesTo: 'ally'
+  },
+  invisibility_self: {
+    label: '👁️ Invisibilidad (propio)',
+    mechanicFlags: ['advantage_atk', 'disadvantage_vs_self'],
+    concentration: true,
+    appliesTo: 'self'
+  },
+  invisibility_ally: {
+    label: '👁️ Invisibilidad (aliado)',
+    mechanicFlags: [],
+    concentration: true,
+    appliesTo: 'ally'
+  },
+  aid: {
+    label: '🛡️ Auxilio',
+    mechanicFlags: ['temp_hp_regen'],
+    concentration: false,
+    appliesTo: 'ally'
+  },
+  shield_of_faith: {
+    label: '🛡️ Escudo de Fe',
+    mechanicFlags: ['ac_bonus'],
+    concentration: true,
+    appliesTo: 'self'
+  },
+  hex: {
+    label: '🎯 Maldición',
+    mechanicFlags: ['hex_active'],     // bonus d6 daño en ataques
+    concentration: true,
+    appliesTo: 'target'
+  },
+  hunters_mark: {
+    label: '🎯 Marca del Cazador',
+    mechanicFlags: ['hunters_mark_active'],
+    concentration: true,
+    appliesTo: 'target'
+  },
+  faerie_fire: {
+    label: '✨ Fuego de las Hadas',
+    mechanicFlags: ['advantage_atk'],  // advantage against lit targets
+    concentration: true,
+    appliesTo: 'target'
+  },
+  hypnotic_pattern: {
+    label: '🌀 Modelo Hipnótico',
+    mechanicFlags: ['control_aoe_active'],
+    concentration: true,
+    appliesTo: 'area'
+  },
+  spirit_guardians: {
+    label: '👼 Guardianes Espirituales',
+    mechanicFlags: ['spirit_guardians_active'],
+    concentration: true,
+    appliesTo: 'self'
+  },
+  concentration_generic: {
+    label: '🔮 Concentración (activa)',
+    mechanicFlags: [],
+    concentration: true,
+    appliesTo: 'generic'
+  }
+};
+
+// ── Text patterns → effectKey detection ──────────────
+// Two-layer detection:
+// 1. By SPELL/ABILITY NAME (fastest, most reliable, bilingual):
+//    Exact name matching after normalization catches the common case where
+//    the text is in Spanish but the mechanic is clearly identified by name.
+// 2. By TEXT CONTENT (catches renamed/homebrew variants):
+//    Checked only when the name doesn't match — covers feats that have
+//    the same mechanic under a different name (e.g. "Combat Haste" HB).
+//
+// selfOrAlly: true = player can choose to target self OR an ally before use.
+//             The render shows a [Yo/Aliado] toggle so the caster can declare
+//             whether they're buffing themselves (which activates the
+//             mechanical flag locally) or an ally (which only tracks conc).
+const EFFECT_NAME_MAP = [
+  // ── Haste (only self-buff variant grants extra action) ──
+  { re:/^(acelerar|haste)(\s+\(?\w*\)?)?$/i,     key:'haste_self',         selfOrAlly:true },
+  // ── Bless ──
+  { re:/^(bendici[oó]n\s*|bless(?:ing)?)(\s*\+\d+)?$/i, key:'bless',       selfOrAlly:true },
+  // ── Hex / Maldición del Brujo ──
+  { re:/^(maldici[oó]n\s*\(?\w*\)?|hex)(\s*blade)?$/i, key:'hex',          selfOrAlly:false },
+  // ── Hunter's Mark ──
+  { re:/^(marca del cazador|hunter'?s?\s*mark)$/i,  key:'hunters_mark',     selfOrAlly:false },
+  // ── Faerie Fire ──
+  { re:/^(fuego de(?: la[sz]?)? hadas?|faerie fire)$/i, key:'faerie_fire',  selfOrAlly:false },
+  // ── Hypnotic Pattern ──
+  { re:/^(modelo hipn[oó]tico|hypnotic pattern)$/i, key:'hypnotic_pattern', selfOrAlly:false },
+  // ── Spirit Guardians ──
+  { re:/^(guardianes? espirituales?|spirit guardians?)$/i, key:'spirit_guardians', selfOrAlly:false },
+  // ── Invisibility ──
+  { re:/^(invisibilidad|invisibility)$/i,           key:'invisibility_self', selfOrAlly:true },
+  // ── Aid ──
+  { re:/^(auxilio|aid)(\s+\(?\w*\)?)?$/i,           key:'aid',              selfOrAlly:false },
+  // ── Shield of Faith ──
+  { re:/^(escudo de fe|shield of faith)$/i,          key:'shield_of_faith', selfOrAlly:false },
+  // ── Rage ──
+  { re:/^(rabia|rage)(\s+of\s+\w+)?$/i,             key:'rage',             selfOrAlly:false },
+  // ── Bane (debuff on targets, tracks concentration only) ──
+  { re:/^(perdici[oó]n|bane)(\s+\(?\w*\)?)?$/i,    key:'concentration_generic', selfOrAlly:false },
+];
+
+// Checked after name — catches renamed/homebrew variants and feats
+const EFFECT_TAG_RULES = [
+  // Haste (confirmed Spanish text: "velocidad del objetivo se duplica" + "acción adicional")
+  { key:'haste_self',     selfOrAlly:true,
+    re:/velocidad.*se duplica|speed is doubled|ganas? una acci[oó]n adicional|you gain an additional action/i },
+  // Rage
+  { key:'rage',           selfOrAlly:false,
+    re:/entras? en est(?:ado de )?rabia|you enter a rage\b|while raging/i },
+  // Bless (confirmed Spanish: "tirada de ataque o una tirada de salvación" "puede tirar 1d4")
+  { key:'bless',          selfOrAlly:true,
+    re:/\bbendicione?s?\b|\bbless(?:ing)?\b/i },
+  // Hex
+  { key:'hex',            selfOrAlly:false,
+    re:/\bhex\b(?! blade)|\bmaldici[oó]n\b(?!.*enfermedad)/i },
+  // Hunter's Mark
+  { key:'hunters_mark',   selfOrAlly:false,
+    re:/marca del cazador|hunter'?s? mark/i },
+  // Faerie Fire
+  { key:'faerie_fire',    selfOrAlly:false,
+    re:/fuego de (?:la[sz]? )?hadas?|faerie fire/i },
+  // Hypnotic Pattern
+  { key:'hypnotic_pattern', selfOrAlly:false,
+    re:/modelo hipn[oó]tico|hypnotic pattern/i },
+  // Spirit Guardians
+  { key:'spirit_guardians', selfOrAlly:false,
+    re:/guardianes? espirituales?|spirit guardians?/i },
+  // Invisibility — requires "become invisible" NOT just "invisible" (avoids Shield spell)
+  { key:'invisibility_self', selfOrAlly:true,
+    re:/\binvisibilit(?:y|ies)\b|(?:te vuelves?|become[s]?)\s+invisible/i },
+  // Aid
+  { key:'aid',            selfOrAlly:false,
+    re:/\baid\b|\bauxilio\b/i },
+  // Shield of Faith
+  { key:'shield_of_faith', selfOrAlly:false,
+    re:/shield of faith|escudo de fe/i },
+];
+
+// detectEffectKey: two-layer lookup (name → text → null)
+function detectEffectKey(name, text) {
+  const cleanName = name.trim().replace(/\s+/g,' ');
+  // Layer 1: by name
+  for (const rule of EFFECT_NAME_MAP) {
+    if (rule.re.test(cleanName)) return { effectKey: rule.key, selfOrAlly: rule.selfOrAlly };
+  }
+  // Layer 2: by text content
+  const combined = (cleanName + ' ' + (text||'')).replace(/\n/g,' ');
+  for (const rule of EFFECT_TAG_RULES) {
+    if (rule.re.test(combined)) {
+      return { effectKey: rule.key, selfOrAlly: rule.selfOrAlly };
+    }
+  }
+  // Generic concentration detection (no specific mechanic flags, just tracks conc)
+  if (/\bconcentraci[oó]n\b|\bconcentration\b/i.test(combined)) {
+    return { effectKey: 'concentration_generic', selfOrAlly: false };
+  }
+  return null;
+}
+
+// ── Active effects helpers ───────────────────────────
+function hasEffect(flag) {
+  return Object.values(G.activeEffects || {}).some(e => e.mechanicFlags.includes(flag));
+}
+function isConcentrating() {
+  return Object.values(G.activeEffects || {}).some(e => e.concentration);
+}
+// Returns the label of the currently-active concentration effect,
+// or null if there is none. Used by the render to show the warning.
+function activeConcentrationLabel() {
+  const eff = Object.values(G.activeEffects || {}).find(e => e.concentration);
+  return eff ? eff.label : null;
+}
+function activateEffect(sourceId, effectKey, appliesTo) {
+  const catalog = EFFECT_CATALOG[effectKey];
+  if (!catalog) return;
+  // Break existing concentration if activating a new concentration spell
+  if (catalog.concentration && isConcentrating()) {
+    breakConcentration();
+  }
+  const id = `eff_${sourceId}_${effectKey}`;
+  if (!G.activeEffects) G.activeEffects = {};
+  G.activeEffects[id] = {
+    id, label: catalog.label,
+    sourceId, effectKey,
+    concentration: catalog.concentration,
+    appliesTo: appliesTo || catalog.appliesTo,
+    mechanicFlags: [...catalog.mechanicFlags],
+    roundsLeft: null
+  };
+  save(); render();
+}
+function deactivateEffect(id) {
+  if (G.activeEffects) delete G.activeEffects[id];
+  save(); render();
+}
+function breakConcentration() {
+  if (!G.activeEffects) return;
+  Object.keys(G.activeEffects).forEach(id => {
+    if (G.activeEffects[id].concentration) delete G.activeEffects[id];
+  });
+}
+function tickEffects() {
+  if (!G.activeEffects) return;
+  Object.entries(G.activeEffects).forEach(([id, eff]) => {
+    if (eff.roundsLeft !== null) {
+      eff.roundsLeft--;
+      if (eff.roundsLeft <= 0) delete G.activeEffects[id];
+    }
+  });
+}
+
+
+//  Classifies any ability/spell by what it DOES, based on
+//  its description text (bilingual EN/ES). Powers the
+//  generic "Sugerencias" combo system below.
+// ═══════════════════════════════════════════════════
+const TAG_RULES = [
+  { tag:'heal',    re:/recuper(?:as?|aci[oó]n)\b|san(?:a|ar|as|aci[oó]n)\b|cura(?:s|ci[oó]n)?\b|regain.*hit points|hit points.*regain|heal(?:ing)?\b/i },
+  { tag:'defense', re:/resistencia a|resistance to|puntos de golpe temporal|temporary hit points|\bca\s*\+|armor class|esquivar|dodge|cobertura total|immunity|inmunidad/i },
+  { tag:'mobility',re:/velocidad de (?:vuelo|excavaci[oó]n|trepar|nataci[oó]n)|flying speed|teletransport|teleport|salto.*(?:pies|feet)|jump|no provoca? ataques? de oportunidad|without provoking opportunity/i },
+  { tag:'damage',  re:/\d+d\d+|puntos? de da[ñn]o|hit points of damage|damage\b/i },
+  { tag:'buff',    re:/ventaja en|advantage on|bonificador (?:a|de)|bonus to|gana[ns]? .* puntos de golpe m[aá]ximos|increases by/i },
+];
+
+// Condition keywords (used both for "control" — inflicting — and for
+// detecting "cure" abilities, which remove these same conditions).
+// NOTE: "invisible"/"invisibility" deliberately excluded — invisibility is
+// almost always a buff (defense/utility), not an offensive control effect,
+// so adding it here would misclassify the Invisibility spell as "control".
+const RE_CONDITION = /aturdid|paraliz|asustad[oa]|incapacitad|derribad[oa]|apresad[oa]|ralentiz|hechizad[oa]|cegad[oa]|ensordecid[oa]|envenenad[oa]|agotamiento|inconscien|stunned|paralyz|frightened|incapacitated|prone|restrained|grappled|slowed|charmed|blinded|deafened|poisoned|petrif|exhaust|unconscious/i;
+// "ends/cures/removes a condition" — these are SUPPORT, not control.
+const RE_CURE = /termina(?:s|r)?\s+(?:un[oa]?|uno de|with|one of)|ends? (?:one of |a )?(?:the following )?condition|cures?\b|elimina(?:s|r)?\s+(?:un[oa]?|uno de)|remove(?:s)?\s+(?:one|a|the)|restablec/i;
+
+function tagAbility(ab) {
+  const text = (ab.full || ab.desc || '') + ' ' + (ab.name || '');
+  const tags = [];
+  for (const r of TAG_RULES) if (r.re.test(text)) tags.push(r.tag);
+
+  if (RE_CONDITION.test(text)) {
+    if (RE_CURE.test(text)) {
+      if (!tags.includes('heal')) tags.push('heal'); // curing a condition = support
+    } else {
+      tags.push('control'); // inflicting a condition on a target
+    }
+  }
+
+  if (!tags.length) tags.push('utility');
+  return tags;
+}
+
+// ── Rough average-damage estimate for ranking "best damage" ──
+// Prefers <roll> from the XML (already-resolved dice, e.g. "2d8+%0") over
+// regexing the description text, which is fragile (catches the first
+// NdM+K it finds, even if it's flavor text rather than the actual damage).
+// A spell can have multiple <roll> entries (e.g. duplicate cross-class
+// listings, or primary+secondary effects) — we take the highest average,
+// since "best damage" ranking just needs a representative top estimate.
+function estimateDamage(ab) {
+  if (ab.dmgEstimate != null) return ab.dmgEstimate; // precomputed for weapon/unarmed attacks
+  if (ab.rolls && ab.rolls.length) {
+    let best = 0;
+    ab.rolls.forEach(r => {
+      const modStr = ab.spellAbilityMod != null ? String(ab.spellAbilityMod) : '0';
+      const resolved = r.replace(/%0/g, modStr);
+      const m = resolved.match(/(\d+)d(\d+)(?:\s*\+\s*(-?\d+))?/);
+      if (m) {
+        const n = +m[1], die = +m[2], bonus = m[3] ? +m[3] : 0;
+        const avg = Math.round((n * (die+1) / 2 + bonus) * 10) / 10;
+        if (avg > best) best = avg;
+      }
+    });
+    if (best > 0) return best;
+  }
+  const text = ab.full || ab.desc || '';
+  const m = text.match(/(\d+)d(\d+)(?:\s*\+\s*(\d+))?/);
+  if (!m) return 0;
+  const n = +m[1], die = +m[2], bonus = m[3] ? +m[3] : 0;
+  return Math.round((n * (die+1) / 2 + bonus) * 10) / 10;
+}
+
+// Passive feats to skip (headers that describe a mechanics system rather
+// than a specific always-on benefit):
+const SKIP_PASSIVE = /^((?:clase |class )?(?:inicial|starting)|convertirse en|atributos b[aá]sicos|lanzamiento de conjuros|spellcasting|estilo de combate$|fighting style$|juramento sagrado|sacred oath|martial archetype|archetipo marcial|artificer speciali|eldritch invocations?|invocaciones m|pact boon|boon of|battle ready|weapon bond|arcane armor$|spell\s*casting$|forma de magia|forma mágica|^(fighter|barbarian|wizard|cleric|druid|paladin|monk|rogue|ranger|bard|sorcerer|warlock|artificer)$|creating (a|an)|ability score (increase|improvement)|extra attack$|ataque adicional$|indomitable$|martial versatility$|versatilidad marcial$|subclase de|nivel \d+:)/i;
+// HEADERS that explain a mechanic but aren't themselves a usable ability
+// — the real options live in separate sibling feats with their own names
+// (e.g. Dorym's actual Channel Divinity picks are "Ira de la Naturaleza"
+// and "Expulsar Infieles", not a feat literally named "Canalizar
+// Divinidad"). Confirmed via Test_PC/Dorym: without this, the header text
+// ("...utilizar Canalizar Divinidad...", "cuando empleas...") matches the
+// channeldivinity resKey pattern just like the real options do, creating
+// a phantom third "ability" that duplicates/shadows the real ones.
+// "Artificer Specialist" is the equivalent header for all Artificer
+// subclass descriptions — each concrete subclass option is its own feat
+// with the pattern "Artificer Specialist: [Name]".
+const SKIP_NAMES_EXACT = /^(canalizar divinidad|channel divinity|artificer specialist)$/i;
+
+const SKIP_NAMES = /^(description|descripci[oó]n|characteristics|caracter[ií]sticas|suggested characteristics|specialty|talent|starting\s|multiclass|proficiency|equipment|languages|idiomas|age|size|speed|ability score improvement|style$|instructor$|well-rounded|trained for|creating a|heraldic|xanathar|artificers? in many worlds|creating an artificer|tool proficiency|tools of the trade|the right tool|spellcasting$)/i;
+
+function buildAbilities(entries, level, mods, prof, weapons, spellEntries, spellDC, trackers) {
+  const out = { action:[], bonus:[], reaction:[], utility:[], trigger:[], passive:[] };
+
+
+  const attacks = level >= 11 ? 3 : level >= 5 ? 2 : 1;
+
+  // ── Base unarmed attack ──────────────────────────
+  const abMod   = Math.max(mods.str, mods.dex);
+  const unarmedB = abMod + prof;
+  const unarmedSign = abMod >= 0 ? '+' : '';
+  const unarmedDie = level >= 5 ? 8 : 4;
+  const unarmedD = `1d${unarmedDie}${unarmedSign}${abMod}`;
+  const unarmedObj = {
+    id:'__attack', name:'Atacar (sin armas)',
+    desc:`${attacks} ${attacks>1?'ataques':'ataque'} · +${unarmedB} al impacto · ${unarmedD}`,
+    full:null, pc:0, once:false, source:'class', spellLevel:0, dc:null,
+    dmgEstimate: Math.round(attacks * ((unarmedDie+1)/2 + abMod) * 10) / 10
+  };
+  unarmedObj.tags = tagAbility(unarmedObj);
+  out.action.push(unarmedObj);
+
+  // ── Weapon attacks ────────────────────────────────
+  weapons.filter(w => !/unarmed|sin armas/i.test(w.name)).forEach((w, wi) => {
+    const finesse  = (w.weaponProperty & FINESSE_BIT) !== 0;
+    const isRanged = w.type === 6;
+    const abMod    = isRanged ? mods.dex : (finesse ? Math.max(mods.str, mods.dex) : mods.str);
+
+    let modAtk = 0, modDmg = 0, hasMods = false;
+    (w.mods || []).forEach(md => {
+      if (md.type === 1) {           // Weapon Attacks (+) modifier
+        hasMods = true;
+        const v = md.value != null ? md.value : prof; // "no value" = + Proficiency Bonus
+        modAtk += v;
+        if (md.value == null) modDmg += v; // extra prof-style mods also boost damage
+      } else if (md.type === 2) {    // Weapon Damage (+) modifier
+        hasMods = true;
+        modDmg += (md.value != null ? md.value : prof);
+      }
+    });
+
+    // Fallback for weapons without explicit <mod> data: read "+N" from the name
+    if (!hasMods) {
+      const magicM = w.name.match(/\+(\d)\b/);
+      const magicB = magicM ? parseInt(magicM[1]) : 0;
+      modAtk = magicB; modDmg = magicB;
+    }
+
+    const atkB    = abMod + prof + modAtk;
+    const dmgB    = abMod + modDmg;
+    const dmgSign = dmgB >= 0 ? '+' : '';
+    let dmgStr = `${w.damage1H}${dmgSign}${dmgB}`;
+    if (w.damage2H) dmgStr += ` (2 manos: ${w.damage2H}${dmgSign}${dmgB})`;
+
+    const diceM = w.damage1H.match(/(\d+)d(\d+)/);
+    const dmgEst = diceM ? (+diceM[1] * (+diceM[2]+1)/2 + dmgB) : dmgB;
+
+    const wObj = {
+      id:`w${wi}`, name:`Atacar con ${w.name}`,
+      desc:`${attacks} ${attacks>1?'ataques':'ataque'} · +${atkB} al impacto · ${dmgStr}`,
+      full:null, pc:0, once:false, source:'weapon', spellLevel:0, dc:null,
+      dmgEstimate: Math.round(attacks * dmgEst * 10) / 10
+    };
+    wObj.tags = tagAbility(wObj);
+    out.action.push(wObj);
+  });
+
+  // ── Feats / item abilities ────────────────────────
+  const seen = new Set();
+  entries.forEach((e, idx) => {
+    if (SKIP_NAMES.test(e.name) || SKIP_NAMES_EXACT.test(e.name.trim())) return;
+    if (e.text.length < 30) return;
+
+    const key = e.name.toLowerCase();
+    if (seen.has(key)) return;
+
+    const pushTrigger = (trig) => {
+      seen.add(key);
+      const desc = shortDesc(e.text);
+      const full = fullDescClean(e.text);
+      const obj = {
+        id:`e${idx}`, name:e.name, desc,
+        full: (full !== desc ? full : null),
+        pc:trig.pc, once:false, source:e.source, spellLevel:0, dc:null,
+        triggerKind: trig.triggerKind, scaling: trig.scaling, variablePC: trig.variablePC,
+        resKey: trig.resKey
+      };
+      obj.tags = tagAbility(obj);
+      out.trigger.push(obj);
+    };
+
+    // Metamagic options modify a spell being cast — their text often
+    // describes the EFFECT in action-economy terms (e.g. "...the casting
+    // time becomes 1 bonus action"), which would otherwise be mistaken
+    // for the feature's OWN cost. Metamagic always wins.
+    const trig = classifyTrigger(e.text);
+    if (trig && trig.triggerKind === 'metamagic') { pushTrigger(trig); return; }
+
+    const type = detectAction(e.name, e.text);
+
+    if (!type) {
+      // Not tied to the action economy — maybe it's a triggered/"free"
+      // feature (Divine Smite, Stunning Strike, etc.) that spends a resource.
+      if (trig) { pushTrigger(trig); return; }
+
+      // Passive / always-on traits: show in dedicated section if the text
+      // has meaningful mechanical content (≥40 chars, not pure proficiency
+      // or flavor). Confirmed useful against all 6 corpus characters.
+      const desc = shortDesc(e.text);
+      if (e.text && e.text.length >= 40 && desc.length >= 20 && !SKIP_PASSIVE.test(e.name.trim())) {
+        seen.add(key);
+        const full = fullDescClean(e.text);
+        out.passive.push({
+          id:`e${idx}`, name:e.name, desc,
+          full:(full!==desc?full:null), source:e.source
+        });
+      }
+      return;
+    }
+
+    seen.add(key);
+
+    // If this ability has its own named resource pool (e.g. "Imponer las
+    // Manos" has a 40-point healing pool), set pc=0 and store ownPool so
+    // the render can show an inline pool stepper instead of charging from
+    // an unrelated sorcery/PC tracker. Without this, the "gastar 5 puntos
+    // de golpe de tu reserva" phrase in the Lay on Hands description was
+    // matching detectPCCost (which finds any "gastar N puntos"), and then
+    // the null resKey fell back to RE_PC_TRACKER_FALLBACK, which picked
+    // "Puntos de Hechicería" on Dorym — confirmed live bug.
+    const poolTracker = (trackers || []).find(t =>
+      t.isPool && t.label.toLowerCase() === e.name.trim().toLowerCase()
+    );
+    const pc     = poolTracker ? 0 : detectPCCost(e.text);
+    const resKey = pc > 0 ? detectResKey(e.text) : null;
+    const ownPool = poolTracker?.id ?? null;
+    const once   = /once (?:on each|per) turn|una vez por turno/i.test(e.text);
+    const desc   = shortDesc(e.text);
+    const full   = fullDescClean(e.text);
+    const effInfo = detectEffectKey(e.name, e.text);
+    const isConcentration = !!(effInfo?.effectKey && EFFECT_CATALOG[effInfo.effectKey]?.concentration);
+
+    const obj = {
+      id:`e${idx}`, name:e.name, desc,
+      full: (full !== desc ? full : null),
+      pc, once, source:e.source, spellLevel:0, dc:null, resKey, ownPool,
+      effectKey: effInfo?.effectKey ?? null,
+      selfOrAlly: effInfo?.selfOrAlly ?? false,
+      isConcentration
+    };
+    obj.tags = tagAbility(obj);
+    out[type].push(obj);
+  });
+
+  // ── Spells ─────────────────────────────────────────
+  const RE_SAVE = /salvaci[oó]n de|tirada de salvaci[oó]n|saving throw/i;
+  (spellEntries || []).forEach(sp => {
+    const stype = detectSpellTime(sp.time);
+
+    const key = sp.name.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+
+    const dcInfo = (sp.abilityIdx !== null) ? spellDC[sp.abilityIdx] : null;
+    const hasSave = RE_SAVE.test(sp.text);
+    const dc = (hasSave && dcInfo) ? dcInfo.dc : null;
+
+    const levelLabel = sp.level === 0 ? 'Truco' : `Nivel ${sp.level}`;
+    const metaParts = [levelLabel];
+    if (sp.ritual) metaParts.push('Ritual');
+    if (sp.time && stype === 'utility') metaParts.push(sp.time);
+    if (sp.range)    metaParts.push(sp.range);
+    if (sp.duration && !/^instantaneous|^instant[aá]neo/i.test(sp.duration)) metaParts.push(sp.duration);
+
+    let full = fullDescClean(sp.text);
+    if (sp.range || sp.duration) {
+      full = `${sp.range ? 'Alcance: '+sp.range : ''}${sp.range && sp.duration ? ' · ' : ''}${sp.duration ? 'Duración: '+sp.duration : ''}\n\n${full}`;
+    }
+    const desc = shortDesc(sp.text);
+    const spellAbilityMod = (sp.abilityIdx !== null) ? mods[ABILITY_KEYS[sp.abilityIdx]] : null;
+    const effInfo = detectEffectKey(sp.name, sp.text);
+
+    // Concentration detected from the spell's own duration field (most reliable
+    // source — FC5e always sets this for concentration spells). Falls back to
+    // checking the effectKey catalog for non-spell abilities (feats, class features)
+    // that also require concentration without saying so in a <duration> field.
+    const isConcentration = /\bconcentr/i.test(sp.duration || '') ||
+      (effInfo?.effectKey && !!EFFECT_CATALOG[effInfo.effectKey]?.concentration);
+
+    const obj = {
+      id: sp.id, name: sp.name, desc,
+      full: (full !== desc ? full : null),
+      pc:0, once:false, source:'spell',
+      spellLevel: sp.level, dc,
+      meta: metaParts.join(' · '),
+      rolls: sp.rolls, spellAbilityMod,
+      slotPrefix: sp.pactSlotLevel ? 'pactsl' : 'sl',
+      slotLevel: sp.pactSlotLevel || sp.level,
+      effectKey: effInfo?.effectKey ?? null,
+      selfOrAlly: effInfo?.selfOrAlly ?? false,
+      isConcentration
+    };
+    obj.tags = tagAbility(obj);
+    out[stype].push(obj);
+  });
+
+  return out;
+}
+
+// ═══════════════════════════════════════════════════
+//  RENDER
+// ═══════════════════════════════════════════════════
+function render() {
+  if (!char) return;
+  SHORT_DESC = {}; FULL_DESC = {};
+
+  document.getElementById('hdr-name').textContent = char.name;
+  document.getElementById('hdr-meta').textContent =
+    `${char.cName} · ${char.raceName}`;
+  document.getElementById('hdr-round').textContent = G.round;
+
+  const hp = G.hp ?? char.hpCur;
+  let h = '';
+
+  // ── HP + CA ──────────────────────────────────────
+  const tempHp = G.tempHp || 0;
+  // AC puede estar aumentada por efectos activos (Escudo de Fe = +2, etc.)
+  const acBonus = hasEffect('ac_bonus') ? 2 : 0;  // Escudo de Fe / Shield of Faith
+  const displayAC = (char.ac || 0) + acBonus;
+
+  h += `<div class="hp-row">
+    <span class="hp-label">Puntos de golpe</span>
+    <div class="hp-controls">
+      ${tempHp > 0 ? `<span class="hp-temp">+${tempHp}</span>` : ''}
+      <button class="adj-btn" onclick="chHP(-1)">−</button>
+      <div class="hp-val" onclick="toggleCalc()">${hp}<span class="hp-max"> / ${char.hpMax}</span></div>
+      <button class="adj-btn" onclick="chHP(1)">+</button>
+      <button class="calc-btn ${calcOpen?'open':''}" onclick="toggleCalc()" title="Calculadora">🧮</button>
+    </div>
+  </div>
+  <div class="ac-row">
+    <span class="ac-shield">🛡️</span>
+    <span class="ac-val">${displayAC}</span>
+    <span class="ac-label">CA${acBonus > 0 ? ` <span class="ac-bonus">+${acBonus}</span>` : ''}</span>
+    <span class="ac-prof" style="margin-left:auto">+${char.prof} comp.</span>
+  </div>`;
+
+  if (calcOpen) {
+    const exprEmpty = calcExpr.length === 0;
+    h += `<div class="calc-panel">
+      <div class="calc-display ${exprEmpty?'empty':''}">${esc(calcExpr || '0')}</div>
+      <div class="calc-grid">
+        <button class="calc-key die" onclick="calcRoll(4)">d4</button>
+        <button class="calc-key die" onclick="calcRoll(6)">d6</button>
+        <button class="calc-key die" onclick="calcRoll(8)">d8</button>
+        <button class="calc-key clear" onclick="calcBackspace()">⌫</button>
+
+        <button class="calc-key die" onclick="calcRoll(10)">d10</button>
+        <button class="calc-key die" onclick="calcRoll(12)">d12</button>
+        <button class="calc-key die" onclick="calcRoll(20)">d20</button>
+        <button class="calc-key op" onclick="calcKey('/')">÷</button>
+
+        <button class="calc-key" onclick="calcKey('7')">7</button>
+        <button class="calc-key" onclick="calcKey('8')">8</button>
+        <button class="calc-key" onclick="calcKey('9')">9</button>
+        <button class="calc-key op" onclick="calcKey('*')">×</button>
+
+        <button class="calc-key" onclick="calcKey('4')">4</button>
+        <button class="calc-key" onclick="calcKey('5')">5</button>
+        <button class="calc-key" onclick="calcKey('6')">6</button>
+        <button class="calc-key op" onclick="calcKey('-')">−</button>
+
+        <button class="calc-key" onclick="calcKey('1')">1</button>
+        <button class="calc-key" onclick="calcKey('2')">2</button>
+        <button class="calc-key" onclick="calcKey('3')">3</button>
+        <button class="calc-key op" onclick="calcKey('+')">+</button>
+
+        <button class="calc-key" onclick="calcKey('0')">0</button>
+        <button class="calc-key" onclick="calcKey('(')">(</button>
+        <button class="calc-key" onclick="calcKey(')')">)</button>
+        <button class="calc-key clear" onclick="calcClear()">C</button>
+      </div>
+      <div class="calc-actions">
+        <button class="calc-act calc-heal" onclick="calcApply('heal')">CURAR</button>
+        <button class="calc-act calc-temp" onclick="calcApply('temp')">PG TEMP</button>
+        <button class="calc-act calc-dmg" onclick="calcApply('damage')">DAÑO</button>
+      </div>
+    </div>`;
+  }
+
+  // ── Spell DC / attack bonus ───────────────────────
+  const dcKeys = Object.keys(char.spellDC || {});
+  if (dcKeys.length > 0) {
+    h += `<div class="dc-row">`;
+    dcKeys.forEach(k => {
+      const info = char.spellDC[k];
+      const ab = ABILITY_ES[parseInt(k)] || '';
+      h += `<div class="dc-badge">CD conjuros (${ab}): <b>${info.dc}</b></div>`;
+      h += `<div class="dc-badge">Ataque conjuros: <b>+${info.atk}</b></div>`;
+    });
+    h += `</div>`;
+  }
+
+  // ── Trackers ─────────────────────────────────────
+  const visTrackers = char.trackers.filter(t => !G.hidden.trackers[t.id]);
+  const hiddenTCount = char.trackers.length - visTrackers.length;
+
+  if (visTrackers.length > 0) {
+    const trCollapsed = !!G.collapsed.trackers;
+    h += `<div class="util-toggle sec-toggle ${trCollapsed?'collapsed':''}" onclick="toggleSection('trackers')">
+      <span>📊 Recursos (${visTrackers.length})</span>
+      <span class="chev">▾</span>
+    </div>`;
+    if (!trCollapsed) {
+    h += `<div class="trackers-grid">`;
+    visTrackers.forEach(t => {
+      const cur = G.trackers[t.id] ?? t.max;
+      const reset = t.resetType === 1 ? 'DsC' : t.resetType === 2 ? 'DsL' : '';
+      h += `<div class="tcard">`;
+      h += `<button class="x-btn" onclick="hideTracker('${t.id}')" title="Ocultar">✕</button>`;
+      h += `<div class="tcard-label">${esc(t.label)}</div>`;
+
+      if (t.isDice && t.diceFmt) {
+        h += `<div class="tcard-dice">${esc(t.diceFmt)}</div>`;
+        if (t.max > 0) {
+          h += `<div class="tcard-num">
+            <button class="tnum-btn" onclick="chTracker('${t.id}',-1)">−</button>
+            <span class="tnum-val">${cur}</span>
+            <span class="tnum-max">/ ${t.max}</span>
+            <button class="tnum-btn" onclick="chTracker('${t.id}',1)">+</button>
+          </div>`;
+        }
+      } else if (t.max <= 8) {
+        h += `<div class="tcard-dots">`;
+        for (let i = 0; i < t.max; i++) {
+          h += `<div class="tdot ${i<cur?'on':''}" onclick="clickTDot('${t.id}',${i})"></div>`;
+        }
+        h += `</div>`;
+        h += `<div style="font-size:.78rem;color:var(--muted)">${cur} / ${t.max}</div>`;
+      } else {
+        h += `<div class="tcard-num">
+          <button class="tnum-btn" onclick="chTracker('${t.id}',-1)">−</button>
+          <span class="tnum-val">${cur}</span>
+          <span class="tnum-max">/ ${t.max}</span>
+          <button class="tnum-btn" onclick="chTracker('${t.id}',1)">+</button>
+        </div>`;
+        if (t.isPool) {
+          const amt = G.poolAmt[t.id] ?? Math.min(5, t.max);
+          h += `<div class="pool-row">
+            <input type="number" inputmode="numeric" class="pool-input" id="poolamt-${t.id}"
+              value="${amt}" min="1" max="${t.max}"
+              onchange="setPoolAmt('${t.id}',this.value)">
+            <button class="pool-btn" onclick="poolSpend('${t.id}')">Gastar</button>
+            ${t.dawnDice ? `<button class="pool-btn dawn-btn" onclick="rollDawn('${t.id}','${esc(t.dawnDice)}')" title="Recuperar cargas al amanecer (${esc(t.dawnDice)})">🌅 ${esc(t.dawnDice)}</button>` : ''}
+          </div>`;
+        }
+      }
+
+      if (reset) h += `<div class="tcard-reset">${reset}</div>`;
+      h += `</div>`;
+    });
+    h += `</div>`;
+    }
+  }
+
+  // ── Controls ─────────────────────────────────────
+  h += `<div class="ctrl-row">
+    <button class="btn-ctrl accent" onclick="finTurn()">Fin de turno</button>
+    <button class="btn-ctrl" onclick="shortRest()">Desc. corto</button>
+    <button class="btn-ctrl danger" onclick="longRest()">Desc. largo</button>
+  </div>`;
+
+  let hiddenACount = 0;
+
+  // ── Estado activo del personaje + encuentro ───────
+  h += renderActiveEffectsPanel();
+  h += renderEncounterStatePanel();
+
+  // ── Mejoras y disparadores ENCIMA de las secciones de acción ─────
+  const trigAll = char.abilities.trigger || [];
+  hiddenACount += trigAll.filter(a => G.hidden.abilities[a.id]).length;
+  h += renderTriggerSection();
+
+  // ── Sugerencias para este turno (desplegable) ─────────────────────
+  h += renderSuggestions();
+
+  // ── Secciones de acción / adicional / reacción ────────────────────
+  const secs = [
+    { key:'action',   label:'Acción',           dot:'d-action',   flag:'actionUsed' },
+    { key:'bonus',    label:'Acción adicional',  dot:'d-bonus',    flag:'bonusUsed' },
+    { key:'reaction', label:'Reacción',          dot:'d-reaction', flag:'reactionUsed' },
+  ];
+
+  secs.forEach(sec => {
+    const all = char.abilities[sec.key] || [];
+    const abs = all.filter(a => !G.hidden.abilities[a.id]);
+    hiddenACount += all.length - abs.length;
+    if (!abs.length) return;
+    const slotUsed = G[sec.flag];
+    const collapsed = !!G.collapsed[sec.key];
+
+    // Undo button: shown when this section's action has been spent
+    const undoBtn = slotUsed
+      ? `<button class="undo-btn" onclick="event.stopPropagation();undoAction('${sec.flag}')" title="Deshacer">↩</button>`
+      : '';
+
+    h += `<div class="section"><div class="sec-head sec-toggle ${collapsed?'collapsed':''}" onclick="toggleSection('${sec.key}')">
+      <div class="sec-dot ${sec.dot}"></div>
+      <span class="sec-name">${sec.label} (${abs.length})</span>
+      <span style="margin-left:auto;display:flex;align-items:center;gap:6px">
+        ${slotUsed ? '<span class="sec-used" style="margin-left:0">usada</span>' : ''}
+        ${undoBtn}
+        <span class="chev">▾</span>
+      </span>
+    </div>`;
+
+    if (!collapsed) {
+    abs.forEach(ab => {
+      const onceUsed = ab.once && G.oncePerTurn[ab.id];
+      const pcTracker = ab.pc > 0 ? findResTracker(ab.resKey) : null;
+      const pcCur = pcTracker ? (G.trackers[pcTracker.id] ?? pcTracker.max) : 99;
+      const pcOk  = pcCur >= ab.pc;
+
+      // Own-pool abilities (e.g. Imponer las Manos): availability gated
+      // on pool having points left, NOT on a separate resource tracker.
+      const ownPoolTracker = ab.ownPool ? char.trackers.find(t => t.id === ab.ownPool) : null;
+      const ownPoolCur = ownPoolTracker ? (G.trackers[ownPoolTracker.id] ?? ownPoolTracker.max) : null;
+      const ownPoolAmt = G.poolAmt[ab.ownPool || ''] ?? Math.min(5, ownPoolTracker?.max ?? 1);
+      const ownPoolOk = ownPoolTracker ? ownPoolCur > 0 : true;
+
+      // Spell slot availability / upcasting.
+      // Pact Magic spells (ab.slotPrefix === 'pactsl') don't get the normal
+      // upcast stepper: by RAW you don't choose what level to cast a
+      // Warlock spell at — every spell you know is automatically cast at
+      // your full Pact slot level.
+      let slotOk = true, slotTracker = null, castLevel = ab.spellLevel;
+      let canUpcast = false, maxCastLevel = ab.spellLevel;
+      const slotPrefix = ab.slotPrefix || 'sl';
+      if (ab.spellLevel > 0) {
+        if (slotPrefix === 'pactsl') {
+          castLevel = ab.slotLevel;
+          slotTracker = char.trackers.find(t => t.id === `pactsl${castLevel}`);
+        } else {
+          maxCastLevel = Math.max(ab.spellLevel, char.maxSpellLevel || ab.spellLevel);
+          canUpcast = maxCastLevel > ab.spellLevel;
+          castLevel = Math.min(Math.max(G.castLevel[ab.id] ?? ab.spellLevel, ab.spellLevel), maxCastLevel);
+          slotTracker = char.trackers.find(t => t.id === `sl${castLevel}`);
+        }
+        const slotCur = slotTracker ? (G.trackers[slotTracker.id] ?? slotTracker.max) : 0;
+        slotOk = slotTracker ? slotCur > 0 : false;
+      }
+
+      const dis   = slotUsed || onceUsed || !pcOk || !slotOk || !ownPoolOk;
+      const cls2  = slotUsed ? 'used' : (!pcOk || onceUsed || !slotOk || !ownPoolOk ? 'locked' : '');
+
+      // combo-highlight: borde resaltado si esta habilidad fue usada en el último combo
+      const comboHighlight = G.comboUsed && G.comboUsed[ab.id] ? ' combo-used' : '';
+
+      let fn;
+      if (ownPoolTracker) {
+        fn = dis ? '' : `useAbPool('${ab.id}','${sec.flag}','${ab.ownPool}',${ownPoolAmt})`;
+      } else {
+        fn = dis ? '' : `useAb('${ab.id}','${sec.flag}',${ab.pc},${ab.once},${ab.spellLevel>0?castLevel:0},'${ab.resKey||''}','${slotPrefix}')`;
+      }
+      const srcLabel = ab.source === 'item'   ? '📦 ítem' :
+                       ab.source === 'weapon' ? '🗡 arma' :
+                       ab.source === 'race'   ? '🧬 raza' :
+                       ab.source === 'background' ? '🗺 trasfondo' :
+                       ab.source === 'spell'  ? '🔮 conjuro' : '';
+
+      SHORT_DESC[ab.id] = ab.desc;
+      if (ab.full) FULL_DESC[ab.id] = ab.full;
+
+      // Pool stepper: permite +/- O escritura directa con teclado numérico
+      let costBadge;
+      if (ownPoolTracker) {
+        const poolMax = ownPoolTracker.max;
+        const poolRemain = ownPoolCur ?? poolMax;
+        costBadge = `<div class="stepper" onclick="event.stopPropagation()">
+          <button class="stepper-btn" onclick="setPoolAmt('${ab.ownPool}',-1,1,${poolRemain})" ${ownPoolAmt<=1?'disabled':''}>−</button>
+          <input type="number" class="pool-input" value="${ownPoolAmt}" min="1" max="${poolRemain}"
+            onclick="event.stopPropagation()"
+            onchange="event.stopPropagation();setPoolAmtDirect('${ab.ownPool}',this.value,1,${poolRemain})"
+            oninput="event.stopPropagation()"
+            inputmode="numeric" pattern="[0-9]*" title="Puntos a gastar">
+          <span class="stepper-val" style="min-width:auto;font-size:.68rem;color:${ownPoolOk?'var(--muted)':'var(--red)'}">/${poolRemain}</span>
+          <button class="stepper-btn" onclick="setPoolAmt('${ab.ownPool}',1,1,${poolRemain})" ${ownPoolAmt>=poolRemain?'disabled':''}>+</button>
+        </div>`;
+      } else if (ab.spellLevel > 0) {
+        if (canUpcast) {
+          costBadge = `<div class="stepper" onclick="event.stopPropagation()">
+            <button class="stepper-btn" onclick="setCastLevel('${ab.id}',-1,${ab.spellLevel},${maxCastLevel})" ${castLevel<=ab.spellLevel?'disabled':''}>−</button>
+            <span class="stepper-val" style="${slotOk?'':'color:var(--red)'}">Nv.${castLevel}</span>
+            <button class="stepper-btn" onclick="setCastLevel('${ab.id}',1,${ab.spellLevel},${maxCastLevel})" ${castLevel>=maxCastLevel?'disabled':''}>+</button>
+          </div>`;
+        } else {
+          costBadge = `<span class="cost ${slotOk?'c-blue':'c-locked'}">Nv.${ab.spellLevel}</span>`;
+        }
+      } else if (ab.pc > 0) {
+        costBadge = `<span class="cost ${pcOk?'c-blue':'c-locked'}">${ab.pc} ${esc(resAbbrev(ab.resKey, pcTracker?.label))}</span>`;
+      } else {
+        costBadge = `<span class="cost c-free">gratis</span>`;
+      }
+
+      // ── Concentration replacement warning ───────────
+      // Shown when this ability requires concentration AND there's already a
+      // concentration effect active. The ability is still usable — the player
+      // may intentionally drop the old effect — but deserves a clear heads-up.
+      // Deliberately NOT blocking (see abilityAvailable) to avoid situations
+      // where the correct tactical choice IS to switch concentration spells.
+      let concWarning = '';
+      if (ab.isConcentration && isConcentrating()) {
+        const curLabel = activeConcentrationLabel();
+        concWarning = `<div class="conc-warning">
+          ⚠️ Reemplaza <em>${esc(curLabel || 'concentración activa')}</em>
+        </div>`;
+      }
+
+      // ── Effect activation badge / Self-Ally toggle ──────────
+      let effectBadge = '';
+      if (ab.effectKey) {
+        const cat = EFFECT_CATALOG[ab.effectKey];
+        const activeId = Object.keys(G.activeEffects || {}).find(id =>
+          G.activeEffects[id].sourceId === ab.id
+        );
+        if (activeId) {
+          // Effect is active — show deactivate button
+          effectBadge = `<span class="eff-badge active" onclick="event.stopPropagation();deactivateEffect('${activeId}')" title="Desactivar efecto">🔵 Activo ✕</span>`;
+        } else if (cat) {
+          if (ab.selfOrAlly) {
+            // Show Self/Ally toggle before the activate button
+            const castTarget = G.castTarget[ab.id] || 'self';
+            effectBadge = `<span class="eff-badge" onclick="event.stopPropagation()">
+              <button class="target-toggle ${castTarget==='self'?'active':''}" onclick="event.stopPropagation();setCastTarget('${ab.id}','self')">Yo</button>
+              <button class="target-toggle ${castTarget==='ally'?'active':''}" onclick="event.stopPropagation();setCastTarget('${ab.id}','ally')">Aliado</button>
+              <button class="eff-activate-btn" onclick="event.stopPropagation();activateEffect('${ab.id}','${ab.effectKey}','${castTarget}')">⚡ Activar</button>
+            </span>`;
+          } else {
+            effectBadge = `<span class="eff-badge" onclick="event.stopPropagation()">
+              <button class="eff-activate-btn" onclick="event.stopPropagation();activateEffect('${ab.id}','${ab.effectKey}','${cat.appliesTo}')">⚡ Activar</button>
+            </span>`;
+          }
+        }
+      }
+
+      // Layout reorganizado: [ab-main] [ab-right: costs + X]
+      // X ya no es position:absolute — vive en .ab-right para no solapar el stepper
+      h += `<div class="ab ${cls2}${comboHighlight}" onclick="${fn}">
+        <div class="ab-main">
+          <div class="ab-name">${esc(ab.name)}</div>
+          <div class="ab-desc" id="desc-${ab.id}">${esc(ab.desc)}</div>
+          ${ab.full ? `<span class="ab-more" id="more-${ab.id}" onclick="event.stopPropagation();toggleDesc('${ab.id}')">ver más ▾</span>` : ''}
+          ${ab.meta || srcLabel ? `<div class="ab-src">${ab.meta ? esc(ab.meta) : ''}${ab.meta && srcLabel ? ' · ' : ''}${srcLabel}</div>` : ''}
+          ${concWarning}
+          ${effectBadge}
+        </div>
+        <div class="ab-right">
+          <button class="x-btn" onclick="event.stopPropagation();hideAbility('${ab.id}')" title="Ocultar">✕</button>
+          <div class="ab-costs">
+            ${costBadge}
+            ${ab.dc != null ? `<span class="cost c-amber">CD ${ab.dc}</span>` : ''}
+            ${ab.once ? `<span class="cost ${onceUsed?'c-locked':'c-amber'}">${onceUsed?'✓ usada':'1/turno'}</span>` : ''}
+          </div>
+        </div>
+      </div>`;
+    });
+    }
+    h += `</div>`;
+  });
+
+  // ── Out-of-combat / utility section ───────────────
+  const utilAll = char.abilities.utility || [];
+  hiddenACount += utilAll.filter(a => G.hidden.abilities[a.id]).length;
+  h += renderUtilitySection();
+
+  // ── Rasgos pasivos / siempre activos ──────────────
+  h += renderPassiveSection();
+
+  // ── Footer: open recycle bin ──────────────────────
+  const totalHidden = hiddenACount + hiddenTCount;
+  if (totalHidden > 0) {
+    h += `<button class="footer-btn" onclick="openTrash()">🗑 Elementos ocultos (${totalHidden})</button>`;
+  }
+
+  document.getElementById('content').innerHTML = h;
+}
+
+// ═══════════════════════════════════════════════════
+//  UNIVERSAL SUGGESTION ENGINE
+//  Looks at every currently-available ability/spell and
+//  groups the best picks by what they accomplish, so the
+//  same code works for any character built in FC5e.
+// ═══════════════════════════════════════════════════
+const SUGGESTION_CATS = [
+  { key:'damage',   label:'💥 Mayor daño' },
+  { key:'heal',     label:'❤️ Curación / Soporte' },
+  { key:'control',  label:'🌀 Control de combate' },
+  { key:'defense',  label:'🛡️ Defensa / Supervivencia' },
+  { key:'mobility', label:'💨 Movilidad' },
+];
+const SLOT_LABELS = { action:'Acción', bonus:'Adicional', reaction:'Reacción' };
+
+function matchesCategory(tags, cat) {
+  switch (cat) {
+    case 'damage':   return tags.includes('damage') && !tags.includes('heal');
+    case 'heal':     return tags.includes('heal') || (tags.includes('buff') && !tags.includes('damage') && !tags.includes('control'));
+    case 'control':  return tags.includes('control');
+    case 'defense':  return tags.includes('defense');
+    case 'mobility': return tags.includes('mobility');
+    default: return false;
+  }
+}
+
+function abilityAvailable(ab, secFlag) {
+  if (G[secFlag]) return false;
+  if (ab.once && G.oncePerTurn[ab.id]) return false;
+
+  // Cannot cast spells while raging
+  if (hasEffect('prevents_spellcasting') && ab.spellLevel > 0) return false;
+  // NOTE: concentration spells are NOT blocked when already concentrating —
+  // they are usable (the player may choose to drop the old effect), but they
+  // show a ⚠️ warning badge in the card render instead (see renderAbilityCard).
+
+  if (ab.pc > 0) {
+    const pcTracker = findResTracker(ab.resKey);
+    const pcCur = pcTracker ? (G.trackers[pcTracker.id] ?? pcTracker.max) : 99;
+    if (pcCur < ab.pc) return false;
+  }
+  if (ab.spellLevel > 0) {
+    const lvl = ab.slotLevel || ab.spellLevel;
+    const prefix = ab.slotPrefix || 'sl';
+    const st = char.trackers.find(t => t.id === `${prefix}${lvl}`);
+    const cur = st ? (G.trackers[st.id] ?? st.max) : 0;
+    if (cur <= 0) return false;
+  }
+  return true;
+}
+
+// Finds the best currently-affordable "smite"-style trigger (Divine Smite
+// and similar): the highest spell-slot level (within the feature's own cap)
+// that still has a slot remaining, and the bonus damage it would deal.
+function bestSmiteOption() {
+  const smites = (char.abilities.trigger || [])
+    .filter(a => !G.hidden.abilities[a.id])
+    .filter(a => a.triggerKind === 'smite' && a.scaling);
+  if (!smites.length) return null;
+
+  const ab = smites[0];
+  const cap = Math.min(ab.scaling.maxLevel, char.maxSpellLevel || ab.scaling.maxLevel);
+  for (let L = cap; L >= 1; L--) {
+    const t = char.trackers.find(t => t.id === `sl${L}`);
+    const cur = t ? (G.trackers[t.id] ?? t.max) : 0;
+    if (cur > 0) {
+      const dice = Math.min(ab.scaling.maxN, ab.scaling.baseN + (L-1)*ab.scaling.perLevelN);
+      const dmg  = Math.round(dice * (ab.scaling.die+1) / 2 * 10) / 10;
+      return { ab, level:L, dice, die:ab.scaling.die, dmg };
+    }
+  }
+  return null;
+}
+
+function buildSuggestions() {
+  const results = [];
+  const ES = G.encounterState || {};
+  const numTargets = Math.max(1, ES.numTargets || 1);
+
+  // ── Context modifiers derived from active effects + encounter state ──
+  // These scalars adjust the "value" of certain suggestion categories
+  // without changing whether they're shown — the engine still shows all
+  // available categories, but ranks within a category using these weights.
+  const atkAdvantage    = hasEffect('advantage_atk')      || ES.targetParalyzed || ES.targetAsleep || ES.targetProne;
+  const atkBonus        = hasEffect('atk_bonus');          // Bless adds d4
+  const hexActive       = hasEffect('hex_active');         // +d6 per hit
+  const huntersMarkActive = hasEffect('hunters_mark_active'); // +d6 per hit
+  const extraAtkAction  = hasEffect('extra_attack_action') && !G.actionUsed; // Haste self
+  const spellsBlocked   = hasEffect('prevents_spellcasting');
+  const targetVulnerable = ES.targetParalyzed || ES.targetAsleep; // auto-crit if adjacent
+
+  SUGGESTION_CATS.forEach(cat => {
+    const picks = {};
+    const secsToSearch = ['action', 'bonus', 'reaction'];
+
+    secsToSearch.forEach(sec => {
+      const secFlag = sec === 'action' ? 'actionUsed' : sec === 'bonus' ? 'bonusUsed' : 'reactionUsed';
+      let candidates = (char.abilities[sec] || [])
+        .filter(ab => !G.hidden.abilities[ab.id])
+        .filter(ab => matchesCategory(ab.tags || [], cat.key))
+        .filter(ab => abilityAvailable(ab, secFlag));
+
+      // Block spells if raging
+      if (spellsBlocked) candidates = candidates.filter(ab => ab.spellLevel === 0);
+
+      if (!candidates.length) return;
+
+      let best;
+      if (cat.key === 'damage') {
+        best = candidates.reduce((a, b) => {
+          // Rank by estimated damage, boosted by context:
+          // × numTargets for AoE-tagged spells, ×1.5 for advantage (more expected hits),
+          // +hex/hunter's mark flat bonus per hit
+          const scoreOf = x => {
+            let d = estimateDamage(x);
+            if ((x.tags||[]).includes('aoe')) d *= Math.min(numTargets, 4);
+            if (atkAdvantage && (x.source === 'weapon' || (x.tags||[]).includes('damage'))) d *= 1.25;
+            if (hexActive || huntersMarkActive) d += 3.5; // expected d6
+            return d;
+          };
+          return scoreOf(b) > scoreOf(a) ? b : a;
+        });
+      } else {
+        // For non-damage categories, prefer higher-level spells (more impactful)
+        best = candidates.reduce((a, b) => (b.spellLevel || 0) > (a.spellLevel || 0) ? b : a);
+      }
+      picks[sec] = { ab: best, secFlag };
+    });
+
+    if (cat.key === 'damage') {
+      let smite = null;
+      if (picks.action && picks.action.ab.source === 'weapon') {
+        smite = bestSmiteOption();
+      }
+      if (Object.keys(picks).length || smite) {
+        let total = 0;
+        Object.values(picks).forEach(p => total += estimateDamage(p.ab));
+        if (smite) total += smite.dmg;
+        if (atkAdvantage) total *= 1.1;   // rough EV increase from advantage
+        results.push({ ...cat, picks, smite, total });
+      }
+      return;
+    }
+
+    if (Object.keys(picks).length) results.push({ ...cat, picks });
+  });
+
+  // ── EXTRA ACTION from Haste ──────────────────────
+  // Haste on self gives one extra action that can only be used for Attack,
+  // Dash, Disengage, Hide, or Use Object — NOT for a leveled spell. We
+  // synthesize a synthetic "use your extra Haste attack" suggestion here.
+  if (extraAtkAction) {
+    const weaponAttack = [...(char.abilities.action || [])].find(ab =>
+      ab.source === 'weapon' && !G.hidden.abilities[ab.id] && !G.actionUsed
+    );
+    if (weaponAttack) {
+      // Show as a special combo note, not a spendable resource — Haste's
+      // extra action is free, but RAW it must be declared and used on the
+      // character's turn.
+      results.unshift({
+        key: 'haste_extra',
+        label: '⚡ Acción extra (Acelerar)',
+        picks: { action: { ab: weaponAttack, secFlag: 'actionUsed' } },
+        smite: bestSmiteOption(),
+        total: estimateDamage(weaponAttack) * (atkAdvantage ? 1.25 : 1),
+        isHasteExtra: true
+      });
+    }
+  }
+
+  return results;
+}
+
+function renderSuggestions() {
+  const suggestions = buildSuggestions();
+  const collapsed = !!G.collapsed.suggestions;
+
+  let h = `<div class="section"><div class="sec-head sec-toggle ${collapsed?'collapsed':''}" onclick="toggleSection('suggestions')">
+    <div class="sec-dot d-combo"></div>
+    <span class="sec-name">Sugerencias para este turno</span>
+    <span class="chev" style="margin-left:auto">▾</span>
+  </div>`;
+
+  if (collapsed) return h + `</div>`;
+
+  if (!suggestions.length) {
+    h += `<div class="sugg-card"><div class="sugg-empty">Sin opciones disponibles ahora — termina el turno o descansa para recuperar recursos.</div></div>`;
+    return h + `</div>`;
+  }
+
+  SUGGESTION_COMBOS = [];
+
+  suggestions.forEach(s => {
+    h += `<div class="sugg-card"><div class="sugg-cat">${s.label}</div>`;
+    let partCount = 0;
+    ['action','bonus','reaction'].forEach(sec => {
+      const pick = s.picks[sec];
+      if (!pick) return;
+      partCount++;
+      const ab = pick.ab;
+      const fn = `useAb('${ab.id}','${pick.secFlag}',${ab.pc},${ab.once},${(ab.slotLevel||ab.spellLevel||0)},'${ab.resKey||''}','${ab.slotPrefix||'sl'}')`;
+      let extra = '';
+      if (s.key === 'damage') {
+        const d = estimateDamage(ab);
+        if (d) extra = `~${d} dmg`;
+      } else if (ab.dc != null) {
+        extra = `CD ${ab.dc}`;
+      } else if (ab.spellLevel > 0) {
+        extra = `Nv.${ab.spellLevel}`;
+      }
+      h += `<div class="sugg-pick" onclick="${fn}">
+        <span class="sugg-slot">${SLOT_LABELS[sec]}</span>
+        <span class="sugg-name">${esc(ab.name)}</span>
+        ${extra ? `<span class="sugg-extra">${esc(extra)}</span>` : ''}
+      </div>`;
+    });
+
+    if (s.key === 'damage' && s.smite) {
+      partCount++;
+      const sm = s.smite;
+      h += `<div class="sugg-pick" onclick="useSmite('${sm.ab.id}',${sm.level})">
+        <span class="sugg-slot">Disparador</span>
+        <span class="sugg-name">${esc(sm.ab.name)} (Nv.${sm.level})</span>
+        <span class="sugg-extra">+${sm.dice}d${sm.die} ~${sm.dmg} dmg</span>
+      </div>`;
+    }
+
+    if (s.key === 'damage' && partCount > 1) {
+      const steps = [];
+      ['action','bonus','reaction'].forEach(sec => {
+        const p = s.picks[sec];
+        if (p) steps.push({ type:'ability', id:p.ab.id, secFlag:p.secFlag, pc:p.ab.pc, once:p.ab.once, spellLevel:(p.ab.slotLevel||p.ab.spellLevel||0), resKey:p.ab.resKey, slotPrefix:p.ab.slotPrefix });
+      });
+      if (s.smite) steps.push({ type:'smite', level:s.smite.level });
+      SUGGESTION_COMBOS.push(steps);
+      const idx = SUGGESTION_COMBOS.length - 1;
+      h += `<div class="sugg-total" onclick="applySuggestionCombo(${idx})">
+        <span>⚡ Aplicar combo completo</span>
+        <span class="sugg-total-val">~${s.total} dmg</span>
+      </div>`;
+    }
+
+    h += `</div>`;
+  });
+
+  return h + `</div>`;
+}
+
+// ═══════════════════════════════════════════════════
+//  ACTIVE EFFECTS + ENCOUNTER STATE PANELS
+// ═══════════════════════════════════════════════════
+function renderActiveEffectsPanel() {
+  const effects = Object.values(G.activeEffects || {});
+  const enc = G.encounterState || {};
+  const hasAny = effects.length > 0;
+  if (!hasAny) return '';
+
+  const collapsed = !!G.collapsed.activeEffects;
+  let h = `<div class="section" style="border-color:var(--amber)"><div class="sec-head sec-toggle ${collapsed?'collapsed':''}" onclick="toggleSection('activeEffects')" style="background:rgba(245,158,11,.08)">
+    <span style="font-size:.85rem">⚡</span>
+    <span class="sec-name" style="color:var(--amber)">Estado activo (${effects.length})</span>
+    <span class="chev" style="margin-left:auto">▾</span>
+  </div>`;
+  if (collapsed) return h + '</div>';
+
+  effects.forEach(eff => {
+    const flags = eff.mechanicFlags.map(f => {
+      const labels = {
+        extra_attack_action:'+ acción de ataque', double_speed:'velocidad ×2',
+        prevents_spellcasting:'❌ conjuros', advantage_atk:'ventaja ataques',
+        disadvantage_atk:'desventaja ataques', bps_resistance:'res. C/P/C',
+        advantage_saving:'ventaja salv.', ac_bonus:'+ CA', atk_bonus:'+ ataque',
+        hex_active:'daño maldición', hunters_mark_active:'marca del cazador',
+        spirit_guardians_active:'guardianes', control_aoe_active:'control AoE',
+        disadvantage_vs_self:'desventaja contra mí'
+      };
+      return labels[f] || f;
+    }).filter(Boolean);
+
+    h += `<div class="eff-row">
+      <span class="eff-icon">${eff.concentration ? '🔮' : '✨'}</span>
+      <div class="eff-info">
+        <div class="eff-name">${esc(eff.label)}</div>
+        ${flags.length ? `<div class="eff-flags">${flags.map(f=>`<span class="eff-flag">${esc(f)}</span>`).join('')}</div>` : ''}
+        ${eff.concentration ? `<div class="eff-conc-hint">Concentración — se pierde al recibir daño</div>` : ''}
+      </div>
+      <button class="eff-end-btn" onclick="deactivateEffect('${eff.id}')" title="Finalizar efecto">✕</button>
+    </div>`;
+  });
+
+  h += `<button class="eff-break-conc-btn" onclick="breakConcentration();save();render()">💔 Romper concentración</button>`;
+  return h + '</div>';
+}
+
+function renderEncounterStatePanel() {
+  const collapsed = !!G.collapsed.encounterState;
+  const enc = G.encounterState || {};
+  const anyActive = enc.targetParalyzed || enc.targetAsleep || enc.targetProne ||
+                    enc.targetBlinded || enc.targetConc || enc.numTargets > 1 || enc.alliesInRange > 0;
+
+  let h = `<div class="section"><div class="sec-head sec-toggle ${collapsed?'collapsed':''}" onclick="toggleSection('encounterState')">
+    <span style="font-size:.85rem">🗺️</span>
+    <span class="sec-name">Estado del encuentro${anyActive ? ' ●' : ''}</span>
+    <span class="chev" style="margin-left:auto">▾</span>
+  </div>`;
+  if (collapsed) return h + '</div>';
+
+  const toggle = (key, label, icon) => {
+    const on = !!enc[key];
+    return `<button class="enc-toggle-btn ${on?'active':''}" onclick="toggleEncounter('${key}')">${icon} ${label}</button>`;
+  };
+
+  h += `<div class="enc-panel">
+    <div class="enc-row">
+      <span class="enc-label">Objetivos en AoE</span>
+      <div class="stepper" onclick="event.stopPropagation()">
+        <button class="stepper-btn" onclick="adjEncounter('numTargets',-1,1,12)">−</button>
+        <span class="stepper-val">${enc.numTargets || 1}</span>
+        <button class="stepper-btn" onclick="adjEncounter('numTargets',1,1,12)">+</button>
+      </div>
+    </div>
+    <div class="enc-row">
+      <span class="enc-label">Aliados en rango</span>
+      <div class="stepper" onclick="event.stopPropagation()">
+        <button class="stepper-btn" onclick="adjEncounter('alliesInRange',-1,0,8)">−</button>
+        <span class="stepper-val">${enc.alliesInRange || 0}</span>
+        <button class="stepper-btn" onclick="adjEncounter('alliesInRange',1,0,8)">+</button>
+      </div>
+    </div>
+    <div class="enc-conds">
+      ${toggle('targetParalyzed','Objetivo paralizado','🔒')}
+      ${toggle('targetAsleep','Objetivo dormido','💤')}
+      ${toggle('targetProne','Objetivo derribado','⬇️')}
+      ${toggle('targetBlinded','Objetivo cegado','🙈')}
+      ${toggle('targetConc','Objetivo concentrado','🔮')}
+    </div>
+  </div>`;
+
+  if (anyActive) {
+    h += `<button class="eff-break-conc-btn" onclick="resetEncounterState()">🔄 Limpiar estado</button>`;
+  }
+
+  return h + '</div>';
+}
+
+function setCastTarget(abId, target) {
+  if (!G.castTarget) G.castTarget = {};
+  G.castTarget[abId] = target;
+  render();
+}
+
+function toggleEncounter(key) {
+  if (!G.encounterState) G.encounterState = { numTargets:1, targetParalyzed:false, targetAsleep:false, targetProne:false, targetBlinded:false, targetConc:false, alliesInRange:0 };
+  G.encounterState[key] = !G.encounterState[key];
+  save(); render();
+}
+
+function adjEncounter(key, delta, min, max) {
+  if (!G.encounterState) G.encounterState = { numTargets:1, alliesInRange:0 };
+  G.encounterState[key] = Math.min(max, Math.max(min, (G.encounterState[key] || (key==='numTargets'?1:0)) + delta));
+  save(); render();
+}
+
+function resetEncounterState() {
+  G.encounterState = { numTargets:1, targetParalyzed:false, targetAsleep:false, targetProne:false, targetBlinded:false, targetConc:false, alliesInRange:0 };
+  save(); render();
+}
+
+// ═══════════════════════════════════════════════════
+//  PASSIVE / ALWAYS-ON TRAITS SECTION
+// ═══════════════════════════════════════════════════
+function renderPassiveSection() {
+  const all = (char.abilities.passive || []).filter(a => !G.hidden.abilities[a.id]);
+  if (!all.length) return '';
+
+  const collapsed = !!G.collapsed.passive;
+  let h = `<div class="section"><div class="sec-head sec-toggle ${collapsed?'collapsed':''}" onclick="toggleSection('passive')">
+    <div class="sec-dot d-utility"></div>
+    <span class="sec-name">🔵 Rasgos pasivos (${all.length})</span>
+    <span class="chev" style="margin-left:auto">▾</span>
+  </div>`;
+  if (collapsed) return h + `</div>`;
+
+  all.forEach(ab => {
+    SHORT_DESC[ab.id] = ab.desc;
+    if (ab.full) FULL_DESC[ab.id] = ab.full;
+    const srcLabel = ab.source === 'item' ? '📦 ítem' : ab.source === 'race' ? '🧬 raza' : ab.source === 'background' ? '🗺 trasfondo' : '';
+    h += `<div class="ab passive-trait">
+      <button class="x-btn" onclick="hideAbility('${ab.id}')" title="Ocultar">✕</button>
+      <div class="ab-main">
+        <div class="ab-name">${esc(ab.name)}</div>
+        <div class="ab-desc" id="desc-${ab.id}">${esc(ab.desc)}</div>
+        ${ab.full ? `<span class="ab-more" id="more-${ab.id}" onclick="toggleDesc('${ab.id}')">ver más ▾</span>` : ''}
+        ${srcLabel ? `<div class="ab-src">${srcLabel}</div>` : ''}
+      </div>
+    </div>`;
+  });
+  return h + `</div>`;
+}
+
+// ═══════════════════════════════════════════════════
+//  OUT-OF-COMBAT / UTILITY SECTION
+//  Rituals, long-casting spells, exploration & social
+//  tools. Not tied to the turn structure — using one
+//  spends its resource (if any) right away, so it
+//  carries over correctly into a later combat.
+// ═══════════════════════════════════════════════════
+function renderUtilitySection() {
+  const all = (char.abilities.utility || []).filter(a => !G.hidden.abilities[a.id]);
+  if (!all.length) return '';
+
+  const open = !!G.showUtility;
+  let h = `<div class="util-toggle ${open?'open':''}" onclick="toggleUtility()">
+    <span>🧭 Fuera de combate (${all.length})</span>
+    <span class="chev">▶</span>
+  </div>`;
+  if (!open) return h;
+
+  h += `<div class="section">`;
+  all.forEach(ab => {
+    SHORT_DESC[ab.id] = ab.desc;
+    if (ab.full) FULL_DESC[ab.id] = ab.full;
+
+    let slotOk = true, slotTracker = null;
+    const uSlotPrefix = ab.slotPrefix || 'sl';
+    const uSlotLevel = ab.slotLevel || ab.spellLevel;
+    if (ab.spellLevel > 0) {
+      slotTracker = char.trackers.find(t => t.id === `${uSlotPrefix}${uSlotLevel}`);
+      const slotCur = slotTracker ? (G.trackers[slotTracker.id] ?? slotTracker.max) : 0;
+      slotOk = slotTracker ? slotCur > 0 : false;
+    }
+    const srcLabel = ab.source === 'item'   ? '📦 ítem' :
+                     ab.source === 'race'   ? '🧬 raza' :
+                     ab.source === 'background' ? '🗺 trasfondo' :
+                     ab.source === 'spell'  ? '🔮 conjuro' : '';
+
+    const utilConcWarning = (ab.isConcentration && isConcentrating())
+      ? `<div class="conc-warning">⚠️ Reemplaza <em>${esc(activeConcentrationLabel() || 'concentración activa')}</em></div>`
+      : '';
+
+    h += `<div class="ab util">
+      <button class="x-btn" onclick="hideAbility('${ab.id}')" title="Ocultar">✕</button>
+      <div class="ab-main">
+        <div class="ab-name">${esc(ab.name)}</div>
+        <div class="ab-desc" id="desc-${ab.id}">${esc(ab.desc)}</div>
+        ${ab.full ? `<span class="ab-more" id="more-${ab.id}" onclick="toggleDesc('${ab.id}')">ver más ▾</span>` : ''}
+        ${ab.meta || srcLabel ? `<div class="ab-src">${ab.meta?esc(ab.meta):''}${ab.meta&&srcLabel?' · ':''}${srcLabel}</div>` : ''}
+        ${utilConcWarning}
+      </div>
+      <div class="ab-costs">
+        ${ab.spellLevel>0
+          ? `<span class="cost ${slotOk?'c-blue':'c-locked'}">Nv.${ab.spellLevel}</span>`
+          : `<span class="cost c-free">gratis</span>`}
+        ${ab.dc!=null ? `<span class="cost c-amber">CD ${ab.dc}</span>` : ''}
+        ${ab.spellLevel>0 ? `<button class="usar-btn" onclick="useUtility('${ab.id}',${uSlotLevel},'${uSlotPrefix}')" ${slotOk?'':'disabled'}>Usar</button>` : ''}
+      </div>
+    </div>`;
+  });
+  h += `</div>`;
+  return h;
+}
+
+function toggleSection(key) { G.collapsed[key] = !G.collapsed[key]; save(); render(); }
+function setCastLevel(id, delta, min, max) {
+  const cur = G.castLevel[id] ?? min;
+  G.castLevel[id] = Math.max(min, Math.min(max, cur + delta));
+  save(); render();
+}
+function toggleUtility() { G.showUtility = !G.showUtility; save(); render(); }
+function useUtility(id, spellLevel, slotPrefix) {
+  spendSpellSlot(spellLevel, slotPrefix);
+  save(); render();
+  toast('Espacio de conjuro gastado');
+}
+
+// ═══════════════════════════════════════════════════
+//  "MEJORAS Y DISPARADORES" SECTION
+//  Free/triggered features: Divine Smite (scales with the
+//  spell slot spent), Metamagic, and other "spend a resource
+//  when X happens" abilities that don't use the action economy.
+// ═══════════════════════════════════════════════════
+// (pcAbbrev removed — superseded by resAbbrev() above, which uses resKey
+// directly instead of re-deriving the abbreviation from a tracker label)
+
+function renderTriggerSection() {
+  const all = (char.abilities.trigger || []).filter(a => !G.hidden.abilities[a.id]);
+  if (!all.length) return '';
+
+  const collapsed = !!G.collapsed.trigger;
+  let h = `<div class="section"><div class="sec-head sec-toggle ${collapsed?'collapsed':''}" onclick="toggleSection('trigger')">
+    <div class="sec-dot d-combo"></div>
+    <span class="sec-name">⚡ Mejoras y disparadores (${all.length})</span>
+    <span class="chev" style="margin-left:auto">▾</span>
+  </div>`;
+  if (collapsed) return h + `</div>`;
+
+  const maxSlotLevel = char.maxSpellLevel || 0;
+
+  all.forEach(ab => {
+    SHORT_DESC[ab.id] = ab.desc;
+    if (ab.full) FULL_DESC[ab.id] = ab.full;
+    const srcLabel = ab.source === 'item' ? '📦 ítem' :
+                     ab.source === 'race' ? '🧬 raza' :
+                     ab.source === 'background' ? '🗺 trasfondo' : '';
+    const displayName = ab.triggerKind === 'metamagic' && !/metamagi/i.test(ab.name)
+      ? `🔀 Metamagia: ${ab.name}` : ab.name;
+
+    // Resolved per-ability (not once for the whole section) — each trigger
+    // may draw from a different resource pool on the same character (e.g.
+    // Dorym has both Puntos de Hechicería for Metamagia and Canalizar
+    // Divinidad; resolving this once globally picked whichever pool came
+    // first in char.trackers, regardless of which one the ability text
+    // actually named).
+    const pcTracker = (ab.pc > 0 || ab.variablePC) ? findResTracker(ab.resKey) : null;
+    const resLabel = resAbbrev(ab.resKey, pcTracker?.label);
+
+    h += `<div class="trig">
+      <button class="x-btn" onclick="hideAbility('${ab.id}')" title="Ocultar">✕</button>
+      <div class="trig-head">
+        <div class="trig-main">
+          <div class="trig-name">${esc(displayName)}</div>
+          <div class="trig-desc" id="desc-${ab.id}">${esc(ab.desc)}</div>
+          ${ab.full ? `<span class="ab-more" id="more-${ab.id}" onclick="toggleDesc('${ab.id}')">ver más ▾</span>` : ''}
+          ${srcLabel ? `<div class="ab-src">${srcLabel}</div>` : ''}
+        </div>
+      </div>`;
+
+    if (ab.triggerKind === 'smite') {
+      const min = 1;
+      const max = ab.scaling ? Math.min(ab.scaling.maxLevel, maxSlotLevel || ab.scaling.maxLevel) : (maxSlotLevel || 1);
+      const sel = Math.min(Math.max(G.triggerSel[ab.id] ?? min, min), Math.max(max,min));
+      const slotT = char.trackers.find(t => t.id === `sl${sel}`);
+      const slotCur = slotT ? (G.trackers[slotT.id] ?? slotT.max) : 0;
+      const slotOk = slotCur > 0;
+      let dmgLabel = '';
+      if (ab.scaling) {
+        const dice = Math.min(ab.scaling.maxN, ab.scaling.baseN + (sel-1)*ab.scaling.perLevelN);
+        dmgLabel = `+${dice}d${ab.scaling.die}`;
+      }
+
+      h += `<div class="trig-foot">
+        <span class="sugg-slot" style="min-width:auto">Espacio</span>
+        <div class="stepper">
+          <button class="stepper-btn" onclick="setTriggerLevel('${ab.id}',-1,${min},${max})" ${sel<=min?'disabled':''}>−</button>
+          <span class="stepper-val">Nv.${sel}</span>
+          <button class="stepper-btn" onclick="setTriggerLevel('${ab.id}',1,${min},${max})" ${sel>=max?'disabled':''}>+</button>
+        </div>
+        ${dmgLabel ? `<span class="trig-dmg">${dmgLabel}</span>` : ''}
+        <button class="usar-btn" onclick="useSmite('${ab.id}',${sel})" ${slotOk?'':'disabled'} style="margin-top:0;margin-left:auto">Usar</button>
+      </div>`;
+    } else {
+      // metamagic / generic resource trigger
+      if (ab.variablePC) {
+        const cost = Math.min(Math.max(G.triggerSel[ab.id] ?? 1, 1), 9);
+        const cur = pcTracker ? (G.trackers[pcTracker.id] ?? pcTracker.max) : 0;
+        const ok = cur >= cost;
+        h += `<div class="trig-foot">
+          <span class="sugg-slot" style="min-width:auto">Costo</span>
+          <div class="stepper">
+            <button class="stepper-btn" onclick="setTriggerLevel('${ab.id}',-1,1,9)" ${cost<=1?'disabled':''}>−</button>
+            <span class="stepper-val">${cost} ${esc(resLabel)}</span>
+            <button class="stepper-btn" onclick="setTriggerLevel('${ab.id}',1,1,9)" ${cost>=9?'disabled':''}>+</button>
+          </div>
+          <button class="usar-btn" onclick="useTriggerResource('${ab.id}')" ${ok?'':'disabled'} style="margin-top:0;margin-left:auto">Usar</button>
+        </div>`;
+      } else if (ab.pc > 0) {
+        const cur = pcTracker ? (G.trackers[pcTracker.id] ?? pcTracker.max) : 0;
+        const ok = cur >= ab.pc;
+        h += `<div class="trig-foot">
+          <span class="cost ${ok?'c-blue':'c-locked'}">${ab.pc} ${esc(resLabel)}</span>
+          <button class="usar-btn" onclick="useTriggerResource('${ab.id}')" ${ok?'':'disabled'} style="margin-top:0;margin-left:auto">Usar</button>
+        </div>`;
+      }
+    }
+
+    h += `</div>`;
+  });
+
+  return h + `</div>`;
+}
+
+function setTriggerLevel(id, delta, min, max) {
+  const cur = G.triggerSel[id] ?? min;
+  G.triggerSel[id] = Math.max(min, Math.min(max, cur + delta));
+  save(); render();
+}
+function useSmite(id, level) {
+  applySmite(level);
+  save(); render();
+  toast(`Espacio Nv.${level} gastado`);
+}
+// Pool-based ability use: spends N points from the named own pool instead
+// of charging an unrelated resource tracker (fix for Imponer las Manos).
+function useAbPool(id, flag, poolId, amount) {
+  G[flag] = true;
+  G.lastSnapshot = { flag, poolId, amount, trackers: { ...G.trackers } };
+  const t = char.trackers.find(t => t.id === poolId);
+  if (t) G.trackers[poolId] = Math.max(0, (G.trackers[poolId] ?? t.max) - amount);
+  save(); render();
+}
+
+function setPoolAmt(poolId, delta, min, max) {
+  const cur = G.poolAmt[poolId] ?? Math.min(5, max);
+  G.poolAmt[poolId] = Math.min(max, Math.max(min, cur + delta));
+  render();
+}
+
+function setPoolAmtDirect(poolId, rawValue, min, max) {
+  const v = parseInt(rawValue);
+  if (isNaN(v)) return;
+  G.poolAmt[poolId] = Math.min(max, Math.max(min, v));
+  render();
+}
+
+// Undo the last action/bonus/reaction: restores the action flag and any
+// spent resources from the snapshot taken when the action was applied.
+function undoAction(flag) {
+  G[flag] = false;
+  if (G.lastSnapshot) {
+    G.trackers = { ...G.lastSnapshot.trackers };
+    G.lastSnapshot = null;
+  }
+  save(); render();
+  toast('Acción deshecha');
+}
+
+function useTriggerResource(id) {
+  const ab = (char.abilities.trigger || []).find(a => a.id === id);
+  if (!ab) return;
+  const amount = ab.variablePC ? (G.triggerSel[id] ?? 1) : ab.pc;
+  G.lastSnapshot = { trackers: { ...G.trackers } };
+  spendResource(amount, ab.resKey);
+  save(); render();
+}
+
+// ── Toggle full / short description ─────────────────
+function toggleDesc(id) {
+  const descEl = document.getElementById('desc-'+id);
+  const linkEl = document.getElementById('more-'+id);
+  if (!descEl || !linkEl) return;
+  const expanded = descEl.dataset.expanded === '1';
+  if (expanded) {
+    descEl.textContent = SHORT_DESC[id];
+    descEl.dataset.expanded = '0';
+    linkEl.textContent = 'ver más ▾';
+  } else {
+    descEl.textContent = FULL_DESC[id];
+    descEl.dataset.expanded = '1';
+    linkEl.textContent = 'ver menos ▴';
+  }
+}
+
+// ═══════════════════════════════════════════════════
+//  ACTIONS
+//  apply* mutate state only (no save/render) so multi-step
+//  combos can apply several effects then render once.
+// ═══════════════════════════════════════════════════
+function applyAbility(id, flag, pc, once, spellLevel, resKey, slotPrefix) {
+  G.lastSnapshot = { flag, trackers: { ...G.trackers } };
+  G[flag] = true;
+  if (pc > 0) spendResource(pc, resKey);
+  if (spellLevel > 0) spendSpellSlot(spellLevel, slotPrefix);
+  if (once) G.oncePerTurn[id] = true;
+
+  // Auto-activate concentration effect when a spell with a known effectKey is cast.
+  // This removes the friction of pressing "⚡ Activar" separately — if the player
+  // clicks "Usar" on Acelerar, the Haste effect should immediately track as active.
+  // selfOrAlly defaults to the catalog's own appliesTo unless the player had toggled
+  // it (stored in G.castTarget[id]).
+  const allAbs = [...(char.abilities.action||[]), ...(char.abilities.bonus||[]),
+                  ...(char.abilities.reaction||[]), ...(char.abilities.utility||[])];
+  const ab = allAbs.find(a => a.id === id);
+  if (ab?.effectKey && ab.isConcentration) {
+    const appliesTo = (ab.selfOrAlly && G.castTarget?.[id]) ? G.castTarget[id]
+      : (EFFECT_CATALOG[ab.effectKey]?.appliesTo || 'self');
+    activateEffect(id, ab.effectKey, appliesTo);
+  }
+}
+function applySmite(level) { spendSpellSlot(level); }
+
+function useAb(id, flag, pc, once, spellLevel, resKey, slotPrefix) {
+  applyAbility(id, flag, pc, once, spellLevel, resKey, slotPrefix);
+  save(); render();
+}
+
+function applySuggestionCombo(idx) {
+  const steps = SUGGESTION_COMBOS[idx];
+  if (!steps) return;
+  G.lastSnapshot = { trackers: { ...G.trackers } };
+  G.comboUsed = {};
+  steps.forEach(step => {
+    if (step.type === 'ability') {
+      G[step.secFlag] = true;
+      if (step.pc > 0) spendResource(step.pc, step.resKey);
+      if (step.spellLevel > 0) spendSpellSlot(step.spellLevel, step.slotPrefix);
+      if (step.once) G.oncePerTurn[step.id] = true;
+      G.comboUsed[step.id] = true;
+    } else if (step.type === 'smite') applySmite(step.level);
+  });
+  save(); render();
+  toast('Combo aplicado');
+}
+
+// resKey identifies WHICH resource pool to spend from (see RESOURCE_TYPES
+// above). Passing it through explicitly — instead of re-deriving it from
+// a single shared global lookup — is the actual fix for the cross-pool
+// collision confirmed on Bo (Psionic Power wrongly spending Superiority
+// Die) and the reason Channel Divinity auto-tracking is now safe on
+// multiclass characters like Dorym.
+function spendResource(n, resKey) {
+  const t = findResTracker(resKey);
+  if (!t) return;
+  G.trackers[t.id] = Math.max(0, (G.trackers[t.id] ?? t.max) - n);
+}
+
+// slotPrefix defaults to the normal 'sl' (regular spell slots). Pact
+// Magic (Warlock) spells pass 'pactsl' instead, so they decrement their
+// own independently-recharging pool rather than a nonexistent/wrong
+// shared one — see the Pact Magic comment block in parseFC5eXML.
+function spendSpellSlot(level, slotPrefix) {
+  const t = char.trackers.find(t => t.id === `${slotPrefix || 'sl'}${level}`);
+  if (!t) return;
+  G.trackers[t.id] = Math.max(0, (G.trackers[t.id] ?? t.max) - 1);
+}
+
+function chTracker(id, delta) {
+  const t = char.trackers.find(t => t.id === id);
+  if (!t) return;
+  G.trackers[id] = Math.max(0, Math.min(t.max, (G.trackers[id] ?? t.max) + delta));
+  save(); render();
+}
+
+function setPoolAmt(id, val) {
+  const t = char.trackers.find(t => t.id === id);
+  if (!t) return;
+  let amt = parseInt(val);
+  if (isNaN(amt) || amt < 1) amt = 1;
+  if (amt > t.max) amt = t.max;
+  G.poolAmt[id] = amt;
+  save();
+}
+
+function poolSpend(id) {
+  const t = char.trackers.find(t => t.id === id);
+  if (!t) return;
+  const amt = G.poolAmt[id] ?? Math.min(5, t.max);
+  const cur = G.trackers[id] ?? t.max;
+  const spent = Math.min(amt, cur);
+  if (spent <= 0) return;
+  G.trackers[id] = cur - spent;
+  save(); render();
+  toast(`${t.label}: −${spent} (quedan ${cur - spent})`);
+}
+
+function clickTDot(id, i) {
+  const t = char.trackers.find(t => t.id === id);
+  if (!t) return;
+  const cur = G.trackers[id] ?? t.max;
+  G.trackers[id] = (i === cur - 1) ? cur - 1 : Math.min(t.max, i + 1);
+  save(); render();
+}
+
+// ── Hide / restore (recycle bin) ─────────────────────
+function hideAbility(id) { G.hidden.abilities[id] = true; save(); render(); }
+function hideTracker(id) { G.hidden.trackers[id] = true; save(); render(); }
+
+const SEC_LABELS = { action:'Acción', bonus:'Acción adicional', reaction:'Reacción', utility:'Fuera de combate', trigger:'Mejoras y disparadores' };
+
+function openTrash() {
+  const groups = [];
+
+  // Hidden abilities, grouped by action type
+  ['action','bonus','reaction','utility','trigger'].forEach(key => {
+    const items = (char.abilities[key] || []).filter(a => G.hidden.abilities[a.id]);
+    if (items.length) {
+      groups.push({
+        label: SEC_LABELS[key],
+        rows: items.map(a => ({
+          name: a.name,
+          fn: `restoreAbility('${a.id}')`
+        }))
+      });
+    }
+  });
+
+  // Hidden trackers
+  const hiddenTr = char.trackers.filter(t => G.hidden.trackers[t.id]);
+  if (hiddenTr.length) {
+    groups.push({
+      label: 'Recursos',
+      rows: hiddenTr.map(t => ({
+        name: t.label,
+        fn: `restoreTracker('${t.id}')`
+      }))
+    });
+  }
+
+  let body = '';
+  if (!groups.length) {
+    body = `<div class="modal-empty">No hay elementos ocultos</div>`;
+  } else {
+    groups.forEach(g => {
+      body += `<div class="trash-group">${esc(g.label)}</div>`;
+      g.rows.forEach(r => {
+        body += `<div class="trash-item">
+          <span class="trash-name">${esc(r.name)}</span>
+          <button class="trash-restore" onclick="${r.fn}">Restaurar</button>
+        </div>`;
+      });
+    });
+  }
+
+  document.getElementById('trash-modal').innerHTML = `
+    <div class="modal-overlay" onclick="if(event.target===this)closeTrash()">
+      <div class="modal-sheet">
+        <div class="modal-head">
+          <span class="modal-title">🗑 Elementos ocultos</span>
+          <button class="modal-close" onclick="closeTrash()">✕</button>
+        </div>
+        <div class="modal-body">${body}</div>
+        ${groups.length ? `<div class="modal-foot">
+          <button class="footer-btn" onclick="restoreAllFromTrash()">↺ Restaurar todo</button>
+        </div>` : ''}
+      </div>
+    </div>`;
+}
+
+function closeTrash() {
+  document.getElementById('trash-modal').innerHTML = '';
+}
+
+function restoreAbility(id) {
+  delete G.hidden.abilities[id];
+  save(); render(); openTrash();
+}
+function restoreTracker(id) {
+  delete G.hidden.trackers[id];
+  save(); render(); openTrash();
+}
+function restoreAllFromTrash() {
+  G.hidden = { abilities:{}, trackers:{} };
+  save(); render(); closeTrash();
+}
+
+function chHP(d) {
+  G.hp = Math.min(char.hpMax, Math.max(0, (G.hp ?? char.hpCur) + d));
+  save(); render();
+}
+
+// ── HP Calculator ────────────────────────────────────
+function toggleCalc() {
+  calcOpen = !calcOpen;
+  if (!calcOpen) calcExpr = '';
+  render();
+}
+function calcKey(k) {
+  calcExpr += k;
+  updateCalcDisplay();
+}
+function calcBackspace() {
+  calcExpr = calcExpr.slice(0, -1);
+  updateCalcDisplay();
+}
+function calcClear() {
+  calcExpr = '';
+  updateCalcDisplay();
+}
+function calcRoll(die) {
+  const r = 1 + Math.floor(Math.random() * die);
+  if (calcExpr && !/[+\-*/(]\s*$/.test(calcExpr)) calcExpr += '+';
+  calcExpr += r;
+  updateCalcDisplay();
+  toast(`d${die} → ${r}`);
+}
+function updateCalcDisplay() {
+  const el = document.querySelector('.calc-display');
+  if (!el) return;
+  el.textContent = calcExpr || '0';
+  el.classList.toggle('empty', calcExpr.length === 0);
+}
+function calcEvalValue() {
+  if (!calcExpr) return null;
+  if (!/^[0-9+\-*/(). ]+$/.test(calcExpr)) return null;
+  try {
+    const v = Function('"use strict";return (' + calcExpr + ')')();
+    return Number.isFinite(v) ? Math.round(v) : null;
+  } catch(e) { return null; }
+}
+function calcApply(mode) {
+  const v = calcEvalValue();
+  if (v === null || v === 0) { toast('Ingresa un valor'); return; }
+  const hp = G.hp ?? char.hpCur;
+  const tempHp = G.tempHp || 0;
+  const amount = Math.abs(v);
+
+  if (mode === 'heal') {
+    G.hp = Math.min(char.hpMax, hp + amount);
+    toast(`+${amount} PG curados`);
+  } else if (mode === 'temp') {
+    G.tempHp = Math.max(tempHp, amount);
+    toast(`PG temporales: ${G.tempHp}`);
+  } else if (mode === 'damage') {
+    let remaining = amount;
+    if (tempHp > 0) {
+      const absorbed = Math.min(tempHp, remaining);
+      G.tempHp = tempHp - absorbed;
+      remaining -= absorbed;
+    }
+    G.hp = Math.max(0, hp - remaining);
+    toast(`−${amount} daño`);
+  }
+  calcExpr = '';
+  save(); render();
+}
+
+function addRound(d) {
+  G.round = Math.max(1, G.round + d);
+  document.getElementById('hdr-round').textContent = G.round;
+  save();
+}
+
+function finTurn() {
+  G.actionUsed = G.bonusUsed = G.reactionUsed = false;
+  G.oncePerTurn = {};
+  G.comboUsed = {};
+  G.lastSnapshot = null;
+  tickEffects();   // decrementa roundsLeft en efectos con duración de N rondas
+  G.round = (G.round || 1) + 1;
+  save(); render();
+}
+
+function shortRest() {
+  char.trackers.forEach(t => { if (t.resetType === 1) G.trackers[t.id] = t.max; });
+  finTurn(); toast('Descanso corto — recursos recuperados');
+}
+
+function longRest() {
+  char.trackers.forEach(t => {
+    // Items with dawnDice don't full-reset on long rest — they need a dawn roll.
+    // All other trackers (including spell slots) reset fully.
+    if (!t.dawnDice) G.trackers[t.id] = t.max;
+  });
+  G.hp = char.hpMax; G.tempHp = 0; G.round = 1;
+  finTurn(); toast('Descanso largo — todo recuperado (items al amanecer pendientes)');
+}
+
+// Roll random charge recovery at dawn (e.g. Staff of the Woodlands: "1d6 + 4").
+// Parses the dice formula stored in dawnDice, rolls it, adds to the current
+// tracker value capped at max, and shows the result as a toast.
+function rollDawn(id, formula) {
+  const t = char.trackers.find(t => t.id === id);
+  if (!t) return;
+  // Parse "NdM + K" or "NdM" or just "K"
+  let total = 0;
+  const formulaClean = formula.replace(/\s+/g, '');
+  // Split on + (keeping sign)
+  const parts = formulaClean.match(/[+\-]?[^+\-]+/g) || [formula];
+  parts.forEach(part => {
+    const diceM = part.match(/([+\-]?\d*)d(\d+)/i);
+    if (diceM) {
+      const n = Math.abs(parseInt(diceM[1]) || 1);
+      const die = parseInt(diceM[2]);
+      const sign = (diceM[1] || '').startsWith('-') ? -1 : 1;
+      for (let i = 0; i < n; i++) total += sign * (Math.floor(Math.random() * die) + 1);
+    } else {
+      total += parseInt(part) || 0;
+    }
+  });
+  const cur = G.trackers[id] ?? 0;
+  const newVal = Math.min(t.max, cur + total);
+  G.trackers[id] = newVal;
+  save(); render();
+  toast(`🌅 ${t.label}: +${total} cargas → ${newVal}/${t.max}`);
+}
+
+// ═══════════════════════════════════════════════════
+//  PERSISTENCE
+// ═══════════════════════════════════════════════════
+function save() {
+  try { localStorage.setItem('g', JSON.stringify(G));
+    if (char) localStorage.setItem('ch', JSON.stringify(char)); } catch(e) {}
+}
+
+function loadSaved() {
+  try {
+    const ch = localStorage.getItem('ch'), g = localStorage.getItem('g');
+    if (ch) {
+      char = JSON.parse(ch);
+      if (g) {
+        const saved = JSON.parse(g);
+        Object.assign(G, saved);
+        if (!G.hidden) G.hidden = { abilities:{}, trackers:{} };
+        if (!G.hidden.abilities) G.hidden.abilities = {};
+        if (!G.hidden.trackers) G.hidden.trackers = {};
+        if (!G.collapsed) G.collapsed = {};
+        if (!G.triggerSel) G.triggerSel = {};
+        if (!G.castLevel) G.castLevel = {};
+        if (!G.poolAmt) G.poolAmt = {};
+        if (!G.comboUsed) G.comboUsed = {};
+        if (G.lastSnapshot === undefined) G.lastSnapshot = null;
+        if (!G.activeEffects) G.activeEffects = {};
+        if (!G.encounterState) G.encounterState = { numTargets:1, targetParalyzed:false, targetAsleep:false, targetProne:false, targetBlinded:false, targetConc:false, alliesInRange:0 };
+        if (!G.castTarget) G.castTarget = {};
+      }
+      return true;
+    }
+  } catch(e) {}
+  return false;
+}
+
+// ═══════════════════════════════════════════════════
+//  IMPORT
+// ═══════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════
+//  IMPORT
+// ═══════════════════════════════════════════════════
+// opts.fromShare: cuando viene de Compartir (FC5e u otra app), el toast
+// es distinto ("reemplazado" en vez de "cargado") y se fuerza el reemplazo
+// del personaje aunque ya hubiera uno cargado — ver processSharedFile().
+function importXML(xmlText, opts) {
+  opts = opts || {};
+  try {
+    char = parseFC5eXML(xmlText);
+    const allSectionKeys = ['action','bonus','reaction','trigger','suggestions','utility','passive','trackers','activeEffects','encounterState'];
+    const collapsed = Object.fromEntries(allSectionKeys.map(k => [k, true]));
+    G = { round:1, hp:char.hpCur, tempHp:0, actionUsed:false, bonusUsed:false,
+          reactionUsed:false, oncePerTurn:{}, trackers:{}, showUtility:false,
+          collapsed, triggerSel:{}, castLevel:{}, poolAmt:{},
+          hidden:{ abilities:{}, trackers:{} },
+          activeEffects:{},
+          encounterState:{ numTargets:1, targetParalyzed:false, targetAsleep:false,
+            targetProne:false, targetBlinded:false, targetConc:false, alliesInRange:0 },
+          castTarget:{}, comboUsed:{}, lastSnapshot:null };
+    char.trackers.forEach(t => { G.trackers[t.id] = t.max; });
+    save();
+    document.getElementById('screen-import').style.display  = 'none';
+    document.getElementById('screen-tracker').style.display = 'flex';
+    render();
+    toast(opts.fromShare ? `${char.name} — personaje reemplazado` : `${char.name} cargado`);
+  } catch(e) { alert('Error al leer el XML: ' + e.message); }
+}
+
+document.getElementById('file-input').addEventListener('change', e => {
+  const f = e.target.files[0]; if (!f) return;
+  const r = new FileReader();
+  r.onload = ev => importXML(ev.target.result);
+  r.onerror = () => alert('No se pudo leer el archivo');
+  r.readAsText(f, 'UTF-8');
+  e.target.value = '';
+});
+
+// ═══════════════════════════════════════════════════
+//  SHARE TARGET
+// ═══════════════════════════════════════════════════
+// processSharedFile(): lee el XML/.dnd5e que el Service Worker dejó en
+// caché tras interceptar el POST de share_target (ver sw.js handleSharePost),
+// sin validar tipo MIME ni extensión — FC5e envía archivos genéricos
+// (application/octet-stream) y el parser de abajo (parseFC5eXML) ya se
+// encarga de fallar con un mensaje claro si el contenido no es válido.
+//
+// IMPORTANTE: se llama ANTES que loadSaved() en init() — si solo se
+// llamara cuando no hay personaje guardado, compartir un XML nuevo NUNCA
+// reemplazaría al personaje actual (que es justamente el caso normal de
+// uso: ya tienes a Dorym cargado y quieres reemplazarlo por una versión
+// actualizada que acabas de exportar desde FC5e).
+async function processSharedFile() {
+  if (!location.search.includes('from-share')) return false;
+  history.replaceState({}, '', location.pathname);
+  try {
+    const cache = await caches.open('share-v1');
+    const res   = await cache.match('pending');
+    if (res) {
+      const text = await res.text();
+      await cache.delete('pending');
+      importXML(text, { fromShare: true });
+      return true;
+    }
+  } catch(e) {}
+  return false;
+}
+
+// ═══════════════════════════════════════════════════
+//  TOAST
+// ═══════════════════════════════════════════════════
+let toastT;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('show'), 2400);
+}
+
+// ═══════════════════════════════════════════════════
+//  UPDATE BANNER (Service Worker version notification)
+// ═══════════════════════════════════════════════════
+// El SW (sw.js, estrategia Network-First) avisa via postMessage cuando
+// detecta que un archivo del shell (index.html/manifest.json/etc.) cambió
+// en el servidor respecto a lo que tenía cacheado. Mostramos un banner no
+// intrusivo que el usuario puede descartar sin perder su personaje/estado
+// actual (el reload solo ocurre si el usuario presiona "Actualizar").
+let updateAvailable = false;
+
+function showUpdateBanner() {
+  document.getElementById('update-banner').classList.add('show');
+  document.getElementById('update-pill').classList.remove('show');
+}
+function dismissUpdateBanner() {
+  document.getElementById('update-banner').classList.remove('show');
+  // Si sigue habiendo una actualización pendiente, dejamos la píldora
+  // flotante visible para poder volver a abrir el banner cuando se quiera.
+  if (updateAvailable) document.getElementById('update-pill').classList.add('show');
+}
+function reloadForUpdate() {
+  // El estado del personaje ya está en localStorage (save() se llama tras
+  // cada acción), así que recargar no pierde el combate en curso.
+  location.reload();
+}
+
+// ═══════════════════════════════════════════════════
+//  SERVICE WORKER
+// ═══════════════════════════════════════════════════
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').catch(()=>{});
+
+  // Mensajes en vivo desde el SW:
+  //  - UPDATE_AVAILABLE: el shell cambió en el servidor → mostrar banner
+  //  - SHARED_FILE: archivo compartido recibido mientras la app ya estaba
+  //    abierta. Nota: por cómo funciona el Web Share Target API, compartir
+  //    SIEMPRE navega/recarga la ventana de la app (no hay forma de evitar
+  //    eso a nivel de plataforma) — pero este listener actúa como respaldo
+  //    inmediato para el instante entre que el SW recibe el POST y la
+  //    navegación termina de cargar, evitando que el usuario vea una
+  //    pantalla en blanco o el personaje viejo por un momento.
+  navigator.serviceWorker.addEventListener('message', event => {
+    if (event.data?.type === 'UPDATE_AVAILABLE') {
+      updateAvailable = true;
+      showUpdateBanner();
+    }
+    if (event.data?.type === 'SHARED_FILE' && event.data.payload) {
+      importXML(event.data.payload, { fromShare: true });
+    }
+  });
+
+  // Chequeo activo: cuando la app vuelve a primer plano (el jugador la
+  // reabre después de un rato), forzar al navegador a revisar si sw.js
+  // cambió en el servidor. Complementa la detección pasiva de
+  // networkFirst() en sw.js, que solo detecta cambios cuando efectivamente
+  // se hace un fetch — si la app estuvo cerrada/en segundo plano sin pedir
+  // nada a la red, esa detección pasiva nunca se dispara por sí sola.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      navigator.serviceWorker.getRegistration().then(reg => reg?.update());
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════════
+(async function init() {
+  // El archivo compartido SIEMPRE tiene prioridad — incluso sobre un
+  // personaje ya cargado y guardado (ver comentario en processSharedFile).
+  if (await processSharedFile()) return;
+
+  if (loadSaved()) {
+    document.getElementById('screen-tracker').style.display = 'flex';
+    render(); return;
+  }
+  document.getElementById('screen-import').style.display = 'flex';
+})();
+</script>
+</body>
+</html>
