@@ -3236,93 +3236,132 @@ document.getElementById('file-input').addEventListener('change', e => {
 // reemplazaría al personaje actual (que es justamente el caso normal de
 // uso: ya tienes a Dorym cargado y quieres reemplazarlo por una versión
 // actualizada que acabas de exportar desde FC5e).
+// ── Debug panel helpers ──────────────────────────────────────────────
+// Panel temporal de diagnóstico visible en pantalla (sin DevTools).
+// Eliminar cuando el share target funcione correctamente.
+let _dbgEl = null;
+function dbg(msg, color) {
+  if (!_dbgEl) {
+    _dbgEl = document.createElement('div');
+    _dbgEl.id = 'share-debug';
+    Object.assign(_dbgEl.style, {
+      position:'fixed', bottom:'60px', left:'8px', right:'8px', zIndex:'9999',
+      background:'#0a0a14', border:'2px solid #f59e0b', borderRadius:'8px',
+      padding:'10px', fontFamily:'monospace', fontSize:'11px',
+      color:'#e2e8f0', maxHeight:'55vh', overflowY:'auto', lineHeight:'1.5'
+    });
+    const btn = document.createElement('button');
+    btn.textContent = '✕ cerrar';
+    Object.assign(btn.style, { float:'right', background:'none', border:'none', color:'#f59e0b', cursor:'pointer', fontSize:'12px' });
+    btn.onclick = () => _dbgEl.remove();
+    _dbgEl.appendChild(btn);
+    _dbgEl.appendChild(document.createElement('hr'));
+    document.body.appendChild(_dbgEl);
+  }
+  const line = document.createElement('div');
+  line.style.color = color || '#e2e8f0';
+  line.textContent = new Date().toISOString().slice(11,23) + ' ' + msg;
+  _dbgEl.appendChild(line);
+  _dbgEl.scrollTop = _dbgEl.scrollHeight;
+  console.log('[SHARE-DEBUG]', msg);
+}
+
 async function processSharedFile() {
-  if (!location.search.includes('from-share')) return false;
+  const hasShare = location.search.includes('from-share');
+  dbg('processSharedFile() — from-share en URL: ' + hasShare, hasShare ? '#86efac' : '#fca5a5');
+  if (!hasShare) return false;
+
   history.replaceState({}, '', location.pathname);
   try {
+    dbg('Abriendo caché share-v1…');
     const cache = await caches.open('share-v1');
     const res   = await cache.match('pending');
-    if (!res) return false;
+    dbg('Cache match "pending": ' + (res ? 'ENCONTRADO ✅' : 'VACÍO ❌'), res ? '#86efac' : '#fca5a5');
+    if (!res) {
+      dbg('No hay archivo pendiente en caché. Posibles causas:', '#fca5a5');
+      dbg('  · El SW no interceptó el POST (¿versión vieja instalada?)', '#fca5a5');
+      dbg('  · El campo formData no se llama "character"', '#fca5a5');
+      dbg('  · El archivo llegó vacío desde FC5e', '#fca5a5');
+      return false;
+    }
+
+    const contentType = res.headers.get('Content-Type') || '(sin Content-Type)';
+    dbg('Content-Type en caché: ' + contentType);
 
     await cache.delete('pending');
     const buffer = await res.arrayBuffer();
-    const bytes  = new Uint8Array(buffer);
+    dbg('ArrayBuffer recibido, tamaño: ' + buffer.byteLength + ' bytes', '#86efac');
 
-    // Detectar formato por magic bytes:
-    //   ZIP:  PK\x03\x04  (0x50 0x4B 0x03 0x04) — FC5e .dnd5e
-    //   XML:  <?xml        (0x3C 0x3F) o  <character
-    const isZip = bytes[0] === 0x50 && bytes[1] === 0x4B &&
-                  bytes[2] === 0x03 && bytes[3] === 0x04;
+    if (buffer.byteLength === 0) {
+      dbg('❌ El buffer está vacío — el SW recibió un archivo de 0 bytes', '#fca5a5');
+      return false;
+    }
+
+    const bytes = new Uint8Array(buffer);
+    const magic = Array.from(bytes.slice(0,8)).map(b => b.toString(16).padStart(2,'0')).join(' ');
+    dbg('Magic bytes (primeros 8): ' + magic);
+    dbg('Primeros 4 chars: ' + String.fromCharCode(...bytes.slice(0,4).filter(b=>b>31)));
+
+    const isZip = bytes[0]===0x50 && bytes[1]===0x4B && bytes[2]===0x03 && bytes[3]===0x04;
+    const isXml = bytes[0]===0x3C; // '<'
+    dbg('Formato detectado: ' + (isZip ? 'ZIP (.dnd5e) ✅' : isXml ? 'XML plano ✅' : 'DESCONOCIDO ❌'), isZip||isXml ? '#86efac' : '#fca5a5');
 
     if (isZip) {
-      // .dnd5e es un ZIP que contiene un archivo XML interno.
-      // Usamos DecompressionStream('deflate-raw') para descomprimir
-      // la entrada local del ZIP y extraer el XML.
-      // Estructura ZIP simplificada:
-      //   - Local file header: 30 bytes fijos + filename_len + extra_len
-      //   - A continuación: datos comprimidos (deflate-raw)
       try {
-        // Leer el header de la primera entrada local del ZIP
-        // Offsets según la spec PKZIP (APPNOTE.TXT):
-        //   [26] = filename length (2 bytes, little-endian)
-        //   [28] = extra field length (2 bytes, little-endian)
         const fnLen    = bytes[26] | (bytes[27] << 8);
         const extraLen = bytes[28] | (bytes[29] << 8);
         const dataOffset = 30 + fnLen + extraLen;
-
-        // Método de compresión: [8-9]
-        //   0 = stored (sin compresión), 8 = deflate
         const method = bytes[8] | (bytes[9] << 8);
+        const compSize = bytes[18] | (bytes[19]<<8) | (bytes[20]<<16) | (bytes[21]<<24);
+
+        dbg('ZIP: method=' + method + ' fnLen=' + fnLen + ' extraLen=' + extraLen + ' dataOffset=' + dataOffset + ' compSize=' + compSize);
 
         let xmlText;
         if (method === 0) {
-          // Sin compresión — datos crudos son el XML directamente
+          dbg('Método: STORED (sin compresión)');
           const uncompressed = buffer.slice(dataOffset);
           xmlText = new TextDecoder('utf-8').decode(uncompressed);
         } else {
-          // Deflate — descomprimir con DecompressionStream
-          // Tamaño comprimido: bytes [18-21] little-endian
-          const compSize = bytes[18] | (bytes[19] << 8) |
-                           (bytes[20] << 16) | (bytes[21] << 24);
+          dbg('Método: DEFLATE — usando DecompressionStream…');
           const compressed = buffer.slice(dataOffset, dataOffset + compSize);
-
           const ds = new DecompressionStream('deflate-raw');
           const writer = ds.writable.getWriter();
           const reader = ds.readable.getReader();
-
           writer.write(new Uint8Array(compressed));
           writer.close();
-
           const chunks = [];
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
             chunks.push(value);
           }
-
-          const total = chunks.reduce((n, c) => n + c.length, 0);
+          const total = chunks.reduce((n,c) => n+c.length, 0);
           const merged = new Uint8Array(total);
-          let offset = 0;
-          chunks.forEach(c => { merged.set(c, offset); offset += c.length; });
+          let off = 0;
+          chunks.forEach(c => { merged.set(c, off); off += c.length; });
           xmlText = new TextDecoder('utf-8').decode(merged);
         }
 
+        dbg('XML descomprimido, longitud: ' + xmlText.length + ' chars', '#86efac');
+        dbg('Inicio XML: ' + xmlText.slice(0,80).replace(/\n/g,' '));
+        dbg('Contiene <character>: ' + xmlText.includes('<character>'), xmlText.includes('<character>') ? '#86efac' : '#fca5a5');
         importXML(xmlText, { fromShare: true });
         return true;
 
       } catch (zipErr) {
-        alert('Error al descomprimir el archivo .dnd5e: ' + zipErr.message);
+        dbg('❌ Error descomprimiendo ZIP: ' + zipErr.message, '#fca5a5');
         return false;
       }
     } else {
-      // XML puro (archivos .xml compartidos desde el explorador de archivos
-      // u otras apps que no usan el formato .dnd5e de FC5e)
+      // XML plano
       const xmlText = new TextDecoder('utf-8').decode(bytes);
+      dbg('XML plano, longitud: ' + xmlText.length + ' chars', '#86efac');
+      dbg('Inicio XML: ' + xmlText.slice(0,80).replace(/\n/g,' '));
       importXML(xmlText, { fromShare: true });
       return true;
     }
   } catch(e) {
-    alert('Error al procesar archivo compartido: ' + e.message);
+    dbg('❌ Excepción inesperada: ' + e.message + ' | ' + e.stack?.slice(0,120), '#fca5a5');
   }
   return false;
 }
