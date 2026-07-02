@@ -5,7 +5,7 @@
 //    2. Incrementa CACHE_VERSION (v1 → v2, etc.)
 //    3. Commit y push — los usuarios verán la notificación al recargar
 // ═══════════════════════════════════════════════════════════════════════
-const CACHE_VERSION = 'combat-tracker-v6';
+const CACHE_VERSION = 'combat-tracker-v7';
 const SHARE_CACHE   = 'share-v1';           // caché aparte para el archivo pendiente
 const SHELL_FILES   = [
   '/combat_tracker/',
@@ -125,14 +125,23 @@ async function handleSharePost(request) {
       headers: { 'Content-Type': 'application/json' }
     }));
 
-    // Buscar el archivo: primero por nombre "character", luego cualquier File
-    let file = formData.get('character');
-    if (!file || !(file instanceof File) || file.size === 0) {
-      // Buscar cualquier campo que sea un File con contenido
+    // FC5e envía DOS entradas con key="character":
+    //   1. shared.txt (129 bytes) — texto descriptivo, llega primero
+    //   2. Nombre.xml / Nombre.dnd5e — el archivo real del personaje
+    // formData.get() solo retorna el primero (el texto), así que usamos
+    // getAll() y nos quedamos con el File de mayor tamaño.
+    let file = null;
+    const allFiles = formData.getAll('character');
+    for (const candidate of allFiles) {
+      if (candidate instanceof File && candidate.size > (file?.size ?? 0)) {
+        file = candidate;
+      }
+    }
+    // Fallback: si 'character' no tiene nada útil, buscar en todos los campos
+    if (!file || file.size < 200) {
       for (const [key, value] of formData.entries()) {
-        if (value instanceof File && value.size > 0) {
+        if (value instanceof File && value.size > (file?.size ?? 0)) {
           file = value;
-          break;
         }
       }
     }
