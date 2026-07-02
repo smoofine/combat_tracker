@@ -5,7 +5,7 @@
 //    2. Incrementa CACHE_VERSION (v1 → v2, etc.)
 //    3. Commit y push — los usuarios verán la notificación al recargar
 // ═══════════════════════════════════════════════════════════════════════
-const CACHE_VERSION = 'combat-tracker-v5';
+const CACHE_VERSION = 'combat-tracker-v6';
 const SHARE_CACHE   = 'share-v1';           // caché aparte para el archivo pendiente
 const SHELL_FILES   = [
   '/combat_tracker/',
@@ -107,29 +107,60 @@ async function handleSharePost(request) {
   let buffer = null;
   try {
     const formData = await request.formData();
-    const file = formData.get('character');
 
-    if (file) {
-      // Guardar SIEMPRE como binario — tanto si es ZIP (.dnd5e) como
-      // si es XML puro (.xml). processSharedFile detecta el formato.
-      buffer = typeof file === 'string'
-        ? new TextEncoder().encode(file).buffer
-        : await file.arrayBuffer();
+    // LOG DIAGNÓSTICO: listar TODOS los campos y sus tipos para identificar
+    // cuál contiene el archivo real (el nombre puede no ser "character")
+    const debugInfo = [];
+    for (const [key, value] of formData.entries()) {
+      if (value instanceof File) {
+        debugInfo.push(`FILE key="${key}" name="${value.name}" size=${value.size} type="${value.type}"`);
+      } else {
+        debugInfo.push(`TEXT key="${key}" value="${String(value).slice(0,80)}"`);
+      }
+    }
 
-      const shareCache = await caches.open(SHARE_CACHE);
+    // Guardar el diagnóstico también como "pending-debug" para leerlo en index.html
+    const shareCache = await caches.open(SHARE_CACHE);
+    await shareCache.put('pending-debug', new Response(JSON.stringify(debugInfo), {
+      headers: { 'Content-Type': 'application/json' }
+    }));
+
+    // Buscar el archivo: primero por nombre "character", luego cualquier File
+    let file = formData.get('character');
+    if (!file || !(file instanceof File) || file.size === 0) {
+      // Buscar cualquier campo que sea un File con contenido
+      for (const [key, value] of formData.entries()) {
+        if (value instanceof File && value.size > 0) {
+          file = value;
+          break;
+        }
+      }
+    }
+
+    if (file && file instanceof File && file.size > 0) {
+      buffer = await file.arrayBuffer();
       await shareCache.put('pending', new Response(buffer, {
         headers: { 'Content-Type': 'application/octet-stream' }
       }));
 
-      // Respaldo postMessage si la ventana ya está abierta (best-effort;
-      // el Share Target normalmente recarga la página de todas formas)
       const clientsList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
       clientsList.forEach(client => {
         client.postMessage({ type: 'SHARED_FILE_PENDING' });
       });
+    } else {
+      // Guardar señal de que no se encontró archivo
+      await shareCache.put('pending', new Response('NO_FILE', {
+        headers: { 'Content-Type': 'text/plain' }
+      }));
     }
   } catch (err) {
-    // Redirigir igual — la app mostrará pantalla de carga manual
+    // Guardar el error para diagnóstico
+    try {
+      const shareCache = await caches.open(SHARE_CACHE);
+      await shareCache.put('pending', new Response('SW_ERROR: ' + err.message, {
+        headers: { 'Content-Type': 'text/plain' }
+      }));
+    } catch {}
   }
 
   return Response.redirect('/combat_tracker/?from-share', 303);

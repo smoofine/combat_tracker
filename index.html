@@ -3285,6 +3285,20 @@ async function processSharedFile() {
       return false;
     }
 
+    // Mostrar diagnóstico del FormData que capturó el SW
+    try {
+      const debugCache = await caches.open('share-v1');
+      const debugRes = await debugCache.match('pending-debug');
+      if (debugRes) {
+        const debugData = await debugRes.json();
+        dbg('── Campos FormData recibidos por el SW ──', '#f59e0b');
+        debugData.forEach(line => dbg('  ' + line, '#93c5fd'));
+        await debugCache.delete('pending-debug');
+      } else {
+        dbg('(No hay datos de diagnóstico del FormData — SW versión anterior)', '#fca5a5');
+      }
+    } catch {}
+
     const contentType = res.headers.get('Content-Type') || '(sin Content-Type)';
     dbg('Content-Type en caché: ' + contentType);
 
