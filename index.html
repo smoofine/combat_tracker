@@ -445,7 +445,7 @@ function esc(s) {
 // ═══════════════════════════════════════════════════
 let char = null;
 let G = { round:1, hp:null, tempHp:0, actionUsed:false, bonusUsed:false,
-  reactionUsed:false, oncePerTurn:{}, trackers:{}, showUtility:false,
+  reactionUsed:false, reactionAvailable:false, lastUsedInSlot:{}, oncePerTurn:{}, trackers:{}, showUtility:false,
   collapsed:{}, triggerSel:{}, castLevel:{}, poolAmt:{},
   hidden:{ abilities:{}, trackers:{} },
   activeEffects:{}, encounterState:{ numTargets:1, targetParalyzed:false,
@@ -936,7 +936,7 @@ function parseFC5eXML(xml) {
 
 // ── Classify a single ability text ──────────────────
 const RE_REACTION = /as a reaction|use (?:your|a) reaction|your reaction to|como reacci[oó]n|reacci[oó]n\s*[-\u2013]|llevar a cabo una reacci/i;
-const RE_BONUS    = /as a bonus action|bonus action to|bonus action on your turn|acci[oó]n adicional|acci[oó]n adici[oó]nal|parte de la acci[oó]n adicional/i;
+const RE_BONUS    = /as a bonus action|bonus action to|bonus action on your turn|acci[oó]n adicional|acci[oó]n adici[oó]nal|parte de la acci[oó]n adicional|tu ataque sin armas adicional|su ataque sin armas adicional|your (?:bonus|additional) unarmed strike/i;
 const RE_ACTION   = /as an action[^s]|using an action|as your action|como acci[oó]n[^e]|llevar a cabo la acci[oó]n/i;
 
 function detectAction(name, text) {
@@ -944,6 +944,17 @@ function detectAction(name, text) {
   if (RE_BONUS.test(text))    return 'bonus';
   if (RE_ACTION.test(text))   return 'action';
   return null;
+}
+
+// Detecta rasgos que se activan "como parte de" la acción adicional (u otra
+// acción) de OTRA habilidad ya nombrada (p.ej. Rostro del Yo Astral puede
+// invocarse junto con Brazos del Yo Astral sin gastar un segundo slot).
+// Devuelve el nombre de texto de esa otra habilidad, o null.
+const PIGGYBACK_RE = /(?:como |or )?parte de la acci[oó]n adicional que (?:realizas|usas|haces|realices) para activar\s+(?:los?\s+|las?\s+)?([^,.\n]+)|as part of the bonus action (?:you (?:use|take|used)|used) to activate\s+([^,.\n]+)/i;
+function extractPiggybackTarget(text) {
+  const m = (text || '').match(PIGGYBACK_RE);
+  if (!m) return null;
+  return (m[1] || m[2] || '').trim();
 }
 
 // ── Classify a spell by its <time> field ────────────
@@ -1386,6 +1397,15 @@ const EFFECT_TAG_RULES = [
 ];
 
 // detectEffectKey: two-layer lookup (name → text → null)
+// El recurso "Puntos de Concentración" del Monje 2024 (ex-Ki) usa la misma
+// palabra que la mecánica de concentración de hechizos ("gastar 1 punto de
+// concentración" no tiene nada que ver con mantener un hechizo). Antes de
+// aplicar el fallback genérico, se descartan las menciones al recurso y
+// solo se acepta el resto si describe la mecánica real (mantener/perder/
+// romper un efecto en curso), no la mera palabra "concentración".
+const FOCUS_RESOURCE_STRIP_RE = /concentraci[oó]n de monje|monk concentration|puntos?\s+de\s+concentraci[oó]n|focus\s+points?|ki\s+points?/gi;
+const CONCENTRATION_MECHANIC_RE = /(?:pierd\w*|mantien\w*|mantener|romper|rompe\w*|requiere\w*)\s+(?:tu\s+|la\s+|su\s+)?concentraci[oó]n|concentrad[oa]s?\s+en|mientras\s+(?:est[eé]s?\s+)?concentrad\w*|(?:lose|los[et]|maintain\w*|break\w*|requires?)\s+(?:your\s+)?concentration|while\s+(?:you(?:'re| are)?\s+)?concentrat\w*|as if\s+(?:you\s+(?:were|are)\s+)?concentrat\w*/i;
+
 function detectEffectKey(name, text) {
   const cleanName = name.trim().replace(/\s+/g,' ');
   // Layer 1: by name
@@ -1400,7 +1420,8 @@ function detectEffectKey(name, text) {
     }
   }
   // Generic concentration detection (no specific mechanic flags, just tracks conc)
-  if (/\bconcentraci[oó]n\b|\bconcentration\b/i.test(combined)) {
+  const strippedForConc = combined.replace(FOCUS_RESOURCE_STRIP_RE, '');
+  if (CONCENTRATION_MECHANIC_RE.test(strippedForConc)) {
     return { effectKey: 'concentration_generic', selfOrAlly: false };
   }
   return null;
@@ -1466,7 +1487,7 @@ const TAG_RULES = [
   { tag:'heal',    re:/recuper(?:as?|aci[oó]n)\b|san(?:a|ar|as|aci[oó]n)\b|cura(?:s|ci[oó]n)?\b|regain.*hit points|hit points.*regain|heal(?:ing)?\b/i },
   { tag:'defense', re:/resistencia a|resistance to|puntos de golpe temporal|temporary hit points|\bca\s*\+|armor class|esquivar|dodge|cobertura total|immunity|inmunidad/i },
   { tag:'mobility',re:/velocidad de (?:vuelo|excavaci[oó]n|trepar|nataci[oó]n)|flying speed|teletransport|teleport|salto.*(?:pies|feet)|jump|no provoca? ataques? de oportunidad|without provoking opportunity/i },
-  { tag:'damage',  re:/\d+d\d+|puntos? de da[ñn]o|hit points of damage|damage\b/i },
+  { tag:'damage',  re:/\d+d\d+|puntos? de da[ñn]o|recib(?:e|en|es|ir[aá]s?)\s+da[ñn]o|hit points of damage|damage\b/i },
   { tag:'buff',    re:/ventaja en|advantage on|bonificador (?:a|de)|bonus to|gana[ns]? .* puntos de golpe m[aá]ximos|increases by/i },
 ];
 
@@ -1683,7 +1704,8 @@ function buildAbilities(entries, level, mods, prof, weapons, spellEntries, spell
       pc, once, source:e.source, spellLevel:0, dc:null, resKey, ownPool,
       effectKey: effInfo?.effectKey ?? null,
       selfOrAlly: effInfo?.selfOrAlly ?? false,
-      isConcentration
+      isConcentration,
+      piggybackOn: extractPiggybackTarget(e.text)
     };
     obj.tags = tagAbility(obj);
     out[type].push(obj);
@@ -1739,6 +1761,17 @@ function buildAbilities(entries, level, mods, prof, weapons, spellEntries, spell
     };
     obj.tags = tagAbility(obj);
     out[stype].push(obj);
+  });
+
+  // Piggyback resolution: convierte el nombre de texto ("Brazos del Yo
+  // Astral") en el id real de esa habilidad, buscando en todas las
+  // secciones de acción (normalmente ambas son acciones adicionales).
+  const allBuilt = [...out.action, ...out.bonus, ...out.reaction];
+  allBuilt.forEach(ab => {
+    if (!ab.piggybackOn) return;
+    const target = allBuilt.find(o => o.id !== ab.id &&
+      stripAccents(o.name).includes(stripAccents(ab.piggybackOn)));
+    ab.piggybackOnId = target ? target.id : null;
   });
 
   return out;
@@ -1933,11 +1966,13 @@ function render() {
     const abs = all.filter(a => !G.hidden.abilities[a.id]);
     hiddenACount += all.length - abs.length;
     if (!abs.length) return;
-    const slotUsed = G[sec.flag];
+    const reactionLocked = sec.key === 'reaction' && !G.reactionAvailable;
+    const slotUsed = G[sec.flag] || reactionLocked;
     const collapsed = !!G.collapsed[sec.key];
 
-    // Undo button: shown when this section's action has been spent
-    const undoBtn = slotUsed
+    // Undo button: shown when this section's action has actually been spent
+    // (no tiene sentido "deshacer" una reacción que aún no está disponible)
+    const undoBtn = G[sec.flag]
       ? `<button class="undo-btn" onclick="event.stopPropagation();undoAction('${sec.flag}')" title="Deshacer">↩</button>`
       : '';
 
@@ -1945,7 +1980,8 @@ function render() {
       <div class="sec-dot ${sec.dot}"></div>
       <span class="sec-name">${sec.label} (${abs.length})</span>
       <span style="margin-left:auto;display:flex;align-items:center;gap:6px">
-        ${slotUsed ? '<span class="sec-used" style="margin-left:0">usada</span>' : ''}
+        ${G[sec.flag] ? '<span class="sec-used" style="margin-left:0">usada</span>' : ''}
+        ${reactionLocked ? '<span class="sec-used" style="margin-left:0">tras fin de turno</span>' : ''}
         ${undoBtn}
         <span class="chev">▾</span>
       </span>
@@ -1987,8 +2023,15 @@ function render() {
         slotOk = slotTracker ? slotCur > 0 : false;
       }
 
-      const dis   = slotUsed || onceUsed || !pcOk || !slotOk || !ownPoolOk;
-      const cls2  = slotUsed ? 'used' : (!pcOk || onceUsed || !slotOk || !ownPoolOk ? 'locked' : '');
+      // Piggyback: algunas habilidades (p.ej. "Rostro del Yo Astral") pueden
+      // activarse como PARTE de la acción adicional de otra habilidad ya
+      // usada (p.ej. "Brazos del Yo Astral"), sin gastar un segundo slot.
+      const piggybacked = ab.piggybackOnId && G.lastUsedInSlot &&
+        G.lastUsedInSlot[sec.flag] === ab.piggybackOnId;
+      const slotUsedForThis = slotUsed && !piggybacked;
+
+      const dis   = slotUsedForThis || onceUsed || !pcOk || !slotOk || !ownPoolOk;
+      const cls2  = slotUsedForThis ? 'used' : (!pcOk || onceUsed || !slotOk || !ownPoolOk ? 'locked' : '');
 
       // combo-highlight: borde resaltado si esta habilidad fue usada en el último combo
       const comboHighlight = G.comboUsed && G.comboUsed[ab.id] ? ' combo-used' : '';
@@ -2050,6 +2093,11 @@ function render() {
         const curLabel = activeConcentrationLabel();
         concWarning = `<div class="conc-warning">
           ⚠️ Reemplaza <em>${esc(curLabel || 'concentración activa')}</em>
+        </div>`;
+      }
+      if (piggybacked) {
+        concWarning += `<div class="conc-warning" style="color:var(--accent,#8b5cf6)">
+          🔗 Junto con la misma acción adicional ya usada
         </div>`;
       }
 
@@ -2150,6 +2198,7 @@ function matchesCategory(tags, cat) {
 
 function abilityAvailable(ab, secFlag) {
   if (G[secFlag]) return false;
+  if (secFlag === 'reactionUsed' && !G.reactionAvailable) return false;
   if (ab.once && G.oncePerTurn[ab.id]) return false;
 
   // Cannot cast spells while raging
@@ -2311,7 +2360,12 @@ function renderSuggestions() {
   suggestions.forEach(s => {
     h += `<div class="sugg-card"><div class="sugg-cat">${s.label}</div>`;
     let partCount = 0;
-    ['action','bonus','reaction'].forEach(sec => {
+    // Si la acción adicional activa un buff/control (p.ej. Brazos del Yo
+    // Astral), conviene usarla ANTES que la acción para aprovecharla —
+    // se sugiere y arma el combo en ese orden.
+    const bonusFirst = s.picks.bonus && (s.picks.bonus.ab.tags||[]).some(t => t==='buff'||t==='control');
+    const secOrder = bonusFirst ? ['bonus','action','reaction'] : ['action','bonus','reaction'];
+    secOrder.forEach(sec => {
       const pick = s.picks[sec];
       if (!pick) return;
       partCount++;
@@ -2345,7 +2399,7 @@ function renderSuggestions() {
 
     if (s.key === 'damage' && partCount > 1) {
       const steps = [];
-      ['action','bonus','reaction'].forEach(sec => {
+      secOrder.forEach(sec => {
         const p = s.picks[sec];
         if (p) steps.push({ type:'ability', id:p.ab.id, secFlag:p.secFlag, pc:p.ab.pc, once:p.ab.once, spellLevel:(p.ab.slotLevel||p.ab.spellLevel||0), resKey:p.ab.resKey, slotPrefix:p.ab.slotPrefix });
       });
@@ -2734,6 +2788,7 @@ function setPoolAmtDirect(poolId, rawValue, min, max) {
 // spent resources from the snapshot taken when the action was applied.
 function undoAction(flag) {
   G[flag] = false;
+  if (G.lastUsedInSlot) delete G.lastUsedInSlot[flag];
   if (G.lastSnapshot) {
     G.trackers = { ...G.lastSnapshot.trackers };
     G.lastSnapshot = null;
@@ -2776,6 +2831,8 @@ function toggleDesc(id) {
 function applyAbility(id, flag, pc, once, spellLevel, resKey, slotPrefix) {
   G.lastSnapshot = { flag, trackers: { ...G.trackers } };
   G[flag] = true;
+  G.lastUsedInSlot = G.lastUsedInSlot || {};
+  G.lastUsedInSlot[flag] = id;
   if (pc > 0) spendResource(pc, resKey);
   if (spellLevel > 0) spendSpellSlot(spellLevel, slotPrefix);
   if (once) G.oncePerTurn[id] = true;
@@ -3025,6 +3082,8 @@ function addRound(d) {
 
 function finTurn() {
   G.actionUsed = G.bonusUsed = G.reactionUsed = false;
+  G.reactionAvailable = true; // la reacción se habilita al salir de tu turno
+  G.lastUsedInSlot = {};
   G.oncePerTurn = {};
   G.comboUsed = {};
   G.lastSnapshot = null;
@@ -3123,7 +3182,7 @@ function importXML(xmlText, opts) {
     const allSectionKeys = ['action','bonus','reaction','trigger','suggestions','utility','passive','trackers','activeEffects','encounterState'];
     const collapsed = Object.fromEntries(allSectionKeys.map(k => [k, true]));
     G = { round:1, hp:char.hpCur, tempHp:0, actionUsed:false, bonusUsed:false,
-          reactionUsed:false, oncePerTurn:{}, trackers:{}, showUtility:false,
+          reactionUsed:false, reactionAvailable:false, lastUsedInSlot:{}, oncePerTurn:{}, trackers:{}, showUtility:false,
           collapsed, triggerSel:{}, castLevel:{}, poolAmt:{},
           hidden:{ abilities:{}, trackers:{} },
           activeEffects:{},
