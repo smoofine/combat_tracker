@@ -472,39 +472,19 @@ const ABILITY_KEYS = ['str','dex','con','int','wis','cha'];
 const ABILITY_ES   = ['FUE','DES','CON','INT','SAB','CAR'];
 // ═══════════════════════════════════════════════════
 //  RESOURCE-POOL REGISTRY
-//  Replaces the old single broad RE_PC_TRACKER lookup, which picked
-//  the FIRST tracker matching ANY resource-sounding keyword anywhere on
-//  the whole character — fine for a single-resource character, but wrong
-//  the moment a character has two or more such pools.
-//
-//  Confirmed wrong on real data: Bo (Fighter/Psi Warrior) has both a
-//  "Superiority Die" tracker and a "Psionic Energy" tracker. His Psionic
-//  Power reaction (pc:1, text mentions "Psionic Energy") was silently
-//  decrementing Superiority Die instead, because that tracker happens to
-//  sit earlier in char.trackers. Multiclass casters (Dorym: Paladín +
-//  Hechicero) have the same risk between Canalizar Divinidad and Puntos
-//  de Hechicería.
-//
-//  Fix: every named FC5e resource pool gets its own entry here. Ability
-//  text is scanned (via detectResKey) for the SPECIFIC phrase that names
-//  which pool it spends from, and that key is stored on the ability
-//  (ab.resKey) at parse time. findResTracker(resKey) then looks up the
-//  tracker using ONLY that pool's own narrow regex — never "whichever
-//  matches first". Order below matters only as a tie-breaker when an
-//  ability's text happens to mention more than one pool's phrasing (rare);
-//  more specific patterns are listed first.
+//  Cada reserva de recurso tiene su propia entrada para evitar que
+//  findResTracker() tome la primera que parezca un recurso en el array
+//  de trackers. Cada habilidad guarda ab.resKey en parse time y
+//  findResTracker(resKey) busca solo el tracker de ese recurso específico.
 // Display abbreviations match what was already shown before this fix
 // (pcAbbrev used to special-case "Concentración" → "PC" literally — kept
 // as-is here to avoid a gratuitous UI text change). "Canalizar Div." is
 // spelled out instead of abbreviated to "CD" because that exact badge
 // text is already used elsewhere for spell save DC (ab.dc) — reusing it
 // here would visually collide with that badge on the same ability card.
-// variableEligible: whether this pool has a genuine "spend a VARIABLE
-// amount" mechanic in 5e (Twinned Spell scales with target count, Psionic
-// power/Maneuvers can burn multiple dice, etc). Sorcery/psionic/
-// superiority do; Monk Focus and Channel Divinity options are always a
-// flat 1-per-use in actual game rules, so they're excluded here — see the
-// classifyTrigger() comment below for why this distinction matters.
+// variableEligible: true si el pool tiene mecánica de coste variable real
+// (Hechicería, Psiónicos, Dados de Superioridad). Focus y Canalizar
+// Divinidad siempre cuestan 1 fijo.
 const RESOURCE_TYPES = [
   { key:'sorcery',         abbrev:'PH',            textRe: /puntos? de hechicer[ií]a|sorcery points?/i,                          trackerRe: /hechicer|sorcery/i,                 variableEligible:true },
   { key:'psionic',         abbrev:'dado psi.',      textRe: /psionic energy|punto(?:s)? de psi[oó]nica/i,                          trackerRe: /psionic energy|psi[oó]nica/i,       variableEligible:true },
@@ -513,14 +493,8 @@ const RESOURCE_TYPES = [
   { key:'channeldivinity', abbrev:'Canalizar Div.', textRe: /(?:usar|utilizar)\s+(?:tu\s+)?canalizar divinidad|use your channel divinity/i, trackerRe: /canalizar divinidad|channel divinity/i, variableEligible:false },
 ];
 
-// Finds which (if any) named resource pool an ability's text refers to.
-// Returns the resKey string, or null if the text doesn't name a pool we
-// recognize (e.g. truly unnamed/generic homebrew resources) — callers
-// fall back to the legacy broad-match behavior in that case, same as
-// before this fix, so previously-working but unnamed cases don't regress.
-//
-// onlyVariableEligible restricts the search to pools that can plausibly
-// have a variable (player-chosen) cost — see classifyTrigger().
+// Retorna resKey si el texto nombra un pool conocido, o null si no.
+// onlyVariableEligible=true restringe a pools con coste variable real.
 function detectResKey(text, onlyVariableEligible) {
   for (const r of RESOURCE_TYPES) {
     if (onlyVariableEligible && !r.variableEligible) continue;
@@ -529,14 +503,10 @@ function detectResKey(text, onlyVariableEligible) {
   return null;
 }
 
-// Legacy broad regex — kept ONLY as the last-resort fallback for
-// abilities whose text doesn't name a specific known pool (detectResKey
-// returns null). Equivalent to the original RE_PC_TRACKER behavior.
+// Fallback cuando detectResKey() retorna null.
 const RE_PC_TRACKER_FALLBACK = /concentraci|psionic energy|puntos? de|superiority|hechicer/i;
 
-// Resolves the actual tracker object for a given resKey, narrowly. Falls
-// back to the old "first resource-looking tracker" behavior only when
-// resKey is null/unrecognized — see comment above.
+// Retorna el tracker del pool indicado por resKey, con fallback genérico.
 function findResTracker(resKey) {
   if (resKey) {
     const def = RESOURCE_TYPES.find(r => r.key === resKey);
@@ -548,14 +518,93 @@ function findResTracker(resKey) {
   return char.trackers.find(t => RE_PC_TRACKER_FALLBACK.test(t.label));
 }
 
-// Display abbreviation for a resource cost badge. Looks up the known
-// abbrev for resKey first; falls back to the tracker's own label (the old
-// pcAbbrev() behavior for unrecognized/homebrew pools) when resKey is
-// null/unmatched, then to a generic placeholder if there's no tracker at all.
+// Abreviado de recurso para el badge de coste en la tarjeta de habilidad.
 function resAbbrev(resKey, fallbackLabel) {
   const def = RESOURCE_TYPES.find(r => r.key === resKey);
   if (def) return def.abbrev;
   return fallbackLabel || 'recurso';
+}
+
+// ═══════════════════════════════════════════════════
+//  AC HELPERS
+//  Dos mecánicas de CA que no vienen en un <mod> numérico y hay que leer
+//  del texto del rasgo:
+//   1) Fórmulas alternativas de CA sin armadura ("Defensa Sin Armadura",
+//      "Armadura Natural", pactos/patrones homebrew, etc.) — reemplazan
+//      10+DEX. Cuando un personaje tiene varias, se usa la que dé más CA.
+//   2) Bonos fijos y permanentes descritos en prosa ("a +2 bonus to AC"),
+//      sin <mod> asociado (p.ej. rasgos de capstone tipo "Incarnation of
+//      Corruption"). Se excluyen los que son claramente condicionales o
+//      temporales (transformaciones, pociones, duración limitada, acción
+//      adicional, etc.): esos quedan para el sistema de efectos activables,
+//      no para la CA base.
+// ═══════════════════════════════════════════════════
+const AC_ABILITY_WORDS = {
+  str: /fuerza|strength/i,
+  dex: /destreza|dexterity/i,
+  con: /constituci[oó]n|constitution/i,
+  int: /inteligencia|intelligence/i,
+  wis: /sabidur[ií]a|wisdom/i,
+  cha: /carisma|charisma/i,
+};
+// Ancla obligatoria: la fórmula solo se considera si el propio texto la
+// condiciona a no llevar armadura (así evitamos leer fórmulas de efectos
+// activables no relacionados, p.ej. "mientras estés concentrado...").
+const UNARMORED_CONDITION_RE = /no\s+llev[a-z]{0,3}\s+armadura|not\s+wearing\s+(?:any\s+)?armor|wearing\s+no\s+armor|aren'?t\s+wearing\s+armor/i;
+// Segunda ancla: la CA descrita debe ser la del propio personaje ("tu CA"/
+// "your AC"), no la de un familiar o criatura fusionada ("the creature's AC",
+// "their Armor Class") — esas fórmulas describen a otra criatura, no al PJ.
+const OWN_AC_RE = /\byour\s+(?:base\s+)?(?:AC|Armor Class)\b|\btu\s+(?:clase de armadura(?:\s+base)?|CA)\b/i;
+
+function parseUnarmoredACFormulas(feats, mods) {
+  const candidates = [];
+  feats.forEach(f => {
+    (f.text || '').split(/(?<=[.\n])/).forEach(sentence => {
+      if (!UNARMORED_CONDITION_RE.test(sentence) || !OWN_AC_RE.test(sentence)) return;
+      const baseMatch = sentence.match(/\b(\d{1,2})\s*(?:\+|m[aá]s)/);
+      if (!baseMatch) return;
+      const base = parseInt(baseMatch[1]);
+      if (base < 8 || base > 16) return;
+      let total = base, found = false;
+      Object.entries(AC_ABILITY_WORDS).forEach(([key, re]) => {
+        if (re.test(sentence)) { total += mods[key]; found = true; }
+      });
+      if (found) candidates.push(total);
+    });
+  });
+  return candidates;
+}
+
+const AC_FLAT_BONUS_RE = /\+\s*(\d{1,2})\s*(?:bonus\s+)?(?:to\s+(?:your\s+)?(?:AC|Armor Class)\b|a\s+(?:tu\s+)?(?:la\s+)?CA\b)/gi;
+const AC_BONUS_CONDITIONAL_RE = /\b(while|when(?:ever)?|if you|as long as|until|for\s+\d+\s*(?:minute|hour|round|turn)s?|bonus action|reaction|transforms?|turns?\s+into|drinker|elixir|potion|activat\w*|duration|mientras|cuando|siempre que|hasta que|acci[oó]n adicional|reacci[oó]n|te transformas|poci[oó]n|elixir)\b/i;
+// Rasgos que son un "menú" de beneficios seleccionables (p.ej. "elige uno de
+// los siguientes al terminar un descanso") son intrínsecamente temporales
+// aunque la frase puntual del bono no lo diga explícitamente — se excluye
+// el rasgo completo, no solo la oración del bono.
+const AC_BONUS_MENU_RE = /choose one of the following|select one of the following|pick one of the following|elige (?:uno|una) de los siguientes|elige (?:uno|una) de las siguientes/i;
+
+// La CA que sube debe ser la del propio personaje, no la de un acompañante
+// (esbirro de acero, familiar, criatura invocada, etc.).
+const AC_BONUS_OTHER_CREATURE_RE = /steel defender|familiar|companion|homunculus|spectral|summoned creature|the creature|their (?:AC|Armor Class)|its (?:AC|Armor Class)/i;
+
+function flatFeatACBonus(feats) {
+  let total = 0;
+  feats.forEach(f => {
+    const text = f.text || '';
+    if (AC_BONUS_MENU_RE.test(text)) return;
+    const sentences = text.split(/(?<=[.\n])/).filter(s => s.trim().length > 0);
+    sentences.forEach((sentence, i) => {
+      if (AC_BONUS_OTHER_CREATURE_RE.test(sentence)) return;
+      // La condición ("while transformed...", "as a bonus action...") suele
+      // quedar en la oración/bullet inmediatamente anterior al bono en sí.
+      const ctx = (sentences[i - 1] || '') + sentence;
+      if (AC_BONUS_CONDITIONAL_RE.test(ctx)) return;
+      AC_FLAT_BONUS_RE.lastIndex = 0;
+      let m;
+      while ((m = AC_FLAT_BONUS_RE.exec(sentence))) total += parseInt(m[1]);
+    });
+  });
+  return total;
 }
 
 function parseFC5eXML(xml) {
@@ -571,11 +620,6 @@ function parseFC5eXML(xml) {
   const name   = $(ch, 'name').split('||')[0].trim();
   const hpMax  = parseInt($(ch, 'hpMax'))     || 10;
   const hpCur  = parseInt($(ch, 'hpCurrent')) || hpMax;
-
-  const scores = $(ch, 'abilities').replace(/,$/, '').split(',').map(Number);
-  const [str, dex, con, int_, wis, cha] = scores;
-  const m = s => Math.floor((s - 10) / 2);
-  const mods = { str:m(str), dex:m(dex), con:m(con), int:m(int_), wis:m(wis), cha:m(cha) };
 
   // ── Classes (multiclass support) ───────────────────
   const classEls  = $$(ch, 'class');
@@ -650,25 +694,10 @@ function parseFC5eXML(xml) {
   }
 
   // ── Pact Magic slots (Warlock) ──────────────────────
-  // Pact Magic is a SEPARATE, independently-recharging slot pool — by RAW
-  // it's explicitly excluded from the normal multiclass spell-slot table,
-  // confirmed empirically: a pure 20th-level Warlock's top-level <slots>
-  // above reads ALL ZEROS. The real slots live on the <class> element's
-  // OWN <slots>/<slotsreset> pair instead (slotsreset:1 = short rest —
-  // same 1=short/2=long convention used by <tracker><resetType> elsewhere).
-  // Non-Pact classes (checked against Dorym, a real multiclass caster)
-  // never carry a <slotsreset> tag at all, so this block is a no-op for
-  // them — only classes that genuinely have an independent recharge cycle
-  // light it up.
-  //
-  // Kept in a SEPARATE tracker id namespace (pactsl#, not sl#) rather than
-  // merged into the regular sl# trackers: a Warlock/caster multiclass can
-  // have a Pact slot and a normal slot at the very same nominal level
-  // simultaneously (e.g. both 1st level), and those are two genuinely
-  // distinct pools on a real character sheet — collapsing them into one
-  // shared count would silently merge a short-rest pool with a long-rest
-  // one. pactInfoByClassIdx lets the spell-parsing loop below tag which
-  // spells should draw from the Pact pool instead of the normal one.
+  // Los espacios de Pacto viven en <class><slots>/<slotsreset> (no en el
+  // <slots> raíz, que es 0 para Brujos puros). Se guardan en namespace
+  // propio (pactsl#) para coexistir con slots normales en multiclase.
+  // pactInfoByClassIdx indica qué spells gastan del pool de Pacto.
   const pactInfoByClassIdx = {};
   classInfo.forEach((ci, classIdx) => {
     const resetEl = [...ci.el.children].find(c => c.tagName.toLowerCase() === 'slotsreset');
@@ -688,15 +717,9 @@ function parseFC5eXML(xml) {
     if (level === 0) return;
 
     pactInfoByClassIdx[classIdx] = { level, max, resetType };
-    // Folded into the SAME ceiling as normal slots (not tracked separately)
-    // since every place that reads char.maxSpellLevel to cap an upcast
-    // stepper still looks the resulting level up via the 'sl' prefix only
-    // (never 'pactsl') — so on a pure Warlock or any character without
-    // overlapping pools this is exactly right, and on a hypothetical
-    // Warlock/caster multiclass (no test data for this combo yet) the
-    // worst case is a normal-spell upcast stepper that *displays* one
-    // extra selectable level than the character truly has, which simply
-    // shows as locked (no tracker found) rather than mis-spending anything.
+    // Combinado en el mismo techo que slots normales. En Brujo puro es
+    // correcto; en multiclase Brujo+lanzador el peor caso es un nivel
+    // de upcast extra que aparece bloqueado (no hay tracker → no gasta).
     maxSpellLevel = Math.max(maxSpellLevel, level);
     trackers.push({
       id:`pactsl${level}`, label:`Espacios de Pacto Nv.${level}`, type:1, resetType,
@@ -716,13 +739,13 @@ function parseFC5eXML(xml) {
     }
     direct.forEach(f => {
       const n = $(f,'name'), tx = $(f,'text');
-      if (n.length > 1) allFeats.push({ name:n, text:tx, source:'class', classIdx });
+      if (n.length > 1) allFeats.push({ name:n, text:tx, source:'class', classIdx, el:f });
     });
   });
   ['race','background'].forEach(src => {
     $$(ch.querySelector(src), 'feat').forEach(f => {
       const n = $(f,'name'), tx = $(f,'text');
-      if (n.length > 1) allFeats.push({ name:n, text:tx, source:src });
+      if (n.length > 1) allFeats.push({ name:n, text:tx, source:src, el:f });
     });
   });
 
@@ -732,19 +755,46 @@ function parseFC5eXML(xml) {
   const weapons   = [];
   let spellDcBonus = 0, spellAtkBonus = 0;
 
+  // ── Ability scores: base + bonos raciales/ASI/dotes/ítems ─────────
+  // <abilities> en el XML son los valores BASE, antes de bonos raciales,
+  // mejoras de característica (ASI) y objetos mágicos. Esos bonos llegan
+  // como <mod category="1" type="N" value="V"> (N: 0=FUE,1=DES,2=CON,3=INT,
+  // 4=SAB,5=CAR — <type> ausente equivale a 0/FUE) como hijos DIRECTOS de
+  // <race>, <class> (p.ej. Ability Score Improvement), de cada <feat>
+  // seleccionado (clase/raza/trasfondo/nivel de personaje) y de ítems
+  // equipados (p.ej. un Cinturón de Fuerza de Gigante). <autolevel> es una
+  // plantilla con TODA la tabla de progresión de la clase — incluye rasgos
+  // de niveles no alcanzados (p.ej. un capstone de nivel 20 en un personaje
+  // de nivel 10) — por eso sus mods NO se suman aquí; solo se leen mods
+  // directos de los elementos ya curados arriba (allFeats, classEls, etc.).
+  const directMods = el => el ? [...el.children].filter(c => c.tagName.toLowerCase() === 'mod') : [];
+  const abilityBonus = [0, 0, 0, 0, 0, 0];
+  const addAbilityBonus = el => directMods(el).forEach(md => {
+    if ($(md, 'category') !== '1') return;
+    const idx = parseInt($(md, 'type')) || 0;
+    const val = parseInt($(md, 'value')) || 0;
+    if (idx >= 0 && idx <= 5) abilityBonus[idx] += val;
+  });
+  addAbilityBonus(ch.querySelector('race'));
+  addAbilityBonus(ch.querySelector('background'));
+  classEls.forEach(addAbilityBonus);
+  allFeats.forEach(f => addAbilityBonus(f.el));
+  [...ch.children].filter(c => c.tagName.toLowerCase() === 'feat').forEach(addAbilityBonus); // dotes a nivel de personaje
+  allItems.forEach(addAbilityBonus);
+
+  const scores = $(ch, 'abilities').replace(/,$/, '').split(',').map(Number).map((s, i) => s + abilityBonus[i]);
+  const [str, dex, con, int_, wis, cha] = scores;
+  const m = s => Math.floor((s - 10) / 2);
+  const mods = { str:m(str), dex:m(dex), con:m(con), int:m(int_), wis:m(wis), cha:m(cha) };
+
   // ── Armor Class calculation ──────────────────────────────────────
-  // FC5e equipped items: <slot>5</slot> = body armor, <type>14</type> with
-  // <ac>>0 = shield, slot=1 accessories with mod<type>10</type> = Ring of
-  // Protection etc. Weapon items (type 5/6/7) also carry mod10 for their
-  // magic bonus (+2 weapon) — NOT an AC bonus; excluded by type filter.
-  //
-  //  Armor types:  1 = LA (base + full DEX), 2 = MA (base + DEX max +2), 3 = HA (base only)
-  //  Shield contribution: <ac> field (never mod10, which is redundant on shields)
-  //  Magic armor bonus: mod<type>10</type> on the ARMOR item itself (slot=5)
-  //  Accessory AC bonus: mod<type>10</type> on non-weapon slot=1 items
-  const WEAPON_ITEM_TYPES = new Set([5, 6, 7]);
+  // slot=5 = armadura, type=14+ac>0 = escudo. mod type=10 = bonus mágico de
+  // CA y puede venir de CUALQUIER ítem equipado (armadura, accesorio, o
+  // incluso un arma con una propiedad tipo "Protector" — p.ej. un arma
+  // consciente que otorga CA a quien la empuña).
+  // Tipos de armadura: 1=ligera(+DEX), 2=media(+DEX máx 2), 3=pesada(sin DEX).
   let armorBaseAC = 0, armorType = 0, armorMagicBonus = 0;
-  let shieldAC = 0, accessoryACBonus = 0;
+  let shieldAC = 0, flatItemACBonus = 0;
   let hasBodyArmor = false;
   allItems.forEach(it => {
     const itType = parseInt($(it,'type'));
@@ -753,7 +803,7 @@ function parseFC5eXML(xml) {
     if (!itSlot) return;
 
     if (itSlot === 5 && itAC > 0) {
-      // Body armor
+      // Armadura corporal
       armorBaseAC = itAC; armorType = itType; hasBodyArmor = true;
       $$(it,'mod').forEach(md => {
         const mt = parseInt($(md,'type')) || 0;
@@ -761,42 +811,33 @@ function parseFC5eXML(xml) {
         if (mt === 10 && mv > 0) armorMagicBonus += mv;
       });
     } else if (itType === 14 && itAC > 0) {
-      // Shield: use <ac> directly — its mod10 is redundant (same value)
+      // Escudo: se usa <ac> directamente — su mod10 es redundante (mismo valor)
       shieldAC = Math.max(shieldAC, itAC);
-    } else if (!WEAPON_ITEM_TYPES.has(itType) && itSlot === 1) {
-      // Accessory (ring, amulet, belt…): only mod type=10 contributes AC
+    } else {
+      // Cualquier otro ítem equipado (accesorio, arma, etc.): solo su(s)
+      // mod type=10 aportan a la CA.
       $$(it,'mod').forEach(md => {
         const mt = parseInt($(md,'type')) || 0;
         const mv = $(md,'value') !== '' ? parseInt($(md,'value')) : 0;
-        if (mt === 10 && mv > 0) accessoryACBonus += mv;
+        if (mt === 10 && mv > 0) flatItemACBonus += mv;
       });
     }
   });
 
-  const dexMod = Math.floor((scores[1] - 10) / 2);
-  const wisMod = Math.floor((scores[4] - 10) / 2);
-  const conMod = Math.floor((scores[2] - 10) / 2);
+  const dexMod = mods.dex;
   let computedAC = 0;
   if (hasBodyArmor) {
     computedAC = armorBaseAC + armorMagicBonus;
-    if (armorType === 1) computedAC += dexMod;                 // LA: full DEX
-    else if (armorType === 2) computedAC += Math.min(dexMod, 2); // MA: DEX max +2
-    // HA (type 3): no DEX bonus
+    if (armorType === 1) computedAC += dexMod;                  // Ligera: DEX completo
+    else if (armorType === 2) computedAC += Math.min(dexMod, 2); // Media: DEX máx +2
+    // Pesada (tipo 3): sin bono de DEX
   } else {
-    // Unarmored Defense: detect from class feats (Monk = DEX+WIS, Barb = DEX+CON)
-    const unarmoredFeat = allFeats.find(f =>
-      /defensa sin armadura|unarmored defense/i.test(f.name)
-    );
-    if (unarmoredFeat) {
-      const txt = unarmoredFeat.text;
-      if (/wisdom|sabidur[ií]a/i.test(txt)) computedAC = 10 + dexMod + wisMod; // Monk
-      else if (/constitution|constituci[oó]n/i.test(txt)) computedAC = 10 + dexMod + conMod; // Barbarian
-      else computedAC = 10 + dexMod;
-    } else {
-      computedAC = 10 + dexMod;
-    }
+    // Fórmulas alternativas de CA sin armadura (Defensa Sin Armadura del
+    // monje, Armadura Natural racial, pactos/patrones homebrew, etc.). Si
+    // hay varias disponibles, se usa la que dé más CA.
+    computedAC = Math.max(10 + dexMod, ...parseUnarmoredACFormulas(allFeats, mods));
   }
-  computedAC += shieldAC + accessoryACBonus;
+  computedAC += shieldAC + flatItemACBonus + flatFeatACBonus(allFeats);
 
   allItems.forEach(it => {
     const itName = $(it,'name'), itText = $(it,'text');
@@ -936,16 +977,10 @@ function detectPCCost(text) {
 // ═══════════════════════════════════════════════════
 const RE_TRIGGER_WORD    = /\bcuando\b|\bwhen you\b|inmediatamente (?:despu[eé]s|cuando)|immediately after/i;
 const RE_SLOTSPEND_SRC   = 'gastar(?:le)?\\s+(?:uno de tus |un )?espacios? de conjuro|expend(?:ing)?\\s+a\\s+spell\\s+slot|consumir(?:[aá]s)?\\s+.*espacio\\s+de\\s+conjuro';
-// (RE_VARIABLE_RES removed — superseded by detectResKey()/RESOURCE_TYPES above,
-// which both detects AND identifies which specific pool an ability draws from)
 const RE_METAMAGIC_CTX   = /lanzas un conjuro|cast(?:ing)? a (?:sorcerer )?spell/i;
 
-// Same phrase as RE_SLOTSPEND_SRC, but rejects matches preceded by a
-// negation ("sin gastar"/"without expending") within a short window.
-// Without this, free innate-casting traits (Drow High Magic, Fey
-// Teleportation — "cast X once, sin gastar un espacio de conjuro") get
-// misclassified as Divine-Smite-style triggers, since they're the OPPOSITE:
-// spending NO slot at all, not spending one to add bonus damage.
+// hasRealSlotSpend: rechaza si "sin"/"without" precede al match (evita
+// clasificar conjuros innatos gratuitos como smite-triggers).
 function hasRealSlotSpend(text) {
   const re = new RegExp(RE_SLOTSPEND_SRC, 'gi');
   let m;
@@ -957,20 +992,9 @@ function hasRealSlotSpend(text) {
   return false;
 }
 
-// "You can cast spell X once with this trait, and regain the ability when
-// you finish a short/long rest" — the standard racial innate-spellcasting
-// pattern (Drow High Magic, Tiefling/Genie lineages, Fey Ancestry variants,
-// etc). Not a spell-slot spend, not a fixed/variable point cost, not the
-// "N times your level" pool formula — none of our other detectors catch
-// it, so today these abilities show up with no usage tracking at all.
-//
-// Requires "cast"/"lanzar" near "once"/"una vez" (not just "once" anywhere
-// in the text) — caught during testing against the Test_PC druid corpus:
-// several HB/TP subclass features use "...a number of times equal to your
-// Wisdom modifier (minimum of once), and you regain..." which has no
-// casting verb at all but would otherwise false-positive on a bare
-// once+regain+rest scan, and wrongly collapse a scaling pool into a
-// 1-charge tracker. Returns a resetType (1=short, 2=long), or null.
+// Detecta "cast X once with this trait, regain on rest" (conjuro innato racial).
+// Requiere verbo de lanzamiento cerca de "once"/"una vez" para evitar
+// falsos positivos con pools escalables ("minimum of once").
 const RE_INNATE_SPELL_ANCHOR = /\bcast\b[\s\S]{0,60}?\bonce\b|\blanzar\b[\s\S]{0,60}?\buna vez\b/gi;
 
 function detectInnateSpellUse(text) {
@@ -1021,15 +1045,8 @@ function detectScalingDamage(text) {
 // reaction as a "trigger" — something that fires off another event
 // (a hit, casting a spell, etc.) and spends a resource instead of a slot
 // in the turn structure.
-// Same phrase as RE_SLOTSPEND_SRC, used to catch the NEGATED case (free
-// innate casting — Star Map, Draconic Gift's Fog/Invisibility options,
-// Drow High Magic) even though hasRealSlotSpend() correctly rejects it as
-// a Smite-style trigger. Their actual usage limits vary too much to model
-// generically yet (fixed 1, proficiency-bonus-sized, tied to another
-// resource's duration) — but without this, they'd vanish from the trigger
-// list entirely (confirmed against 5 real Test_PC druid features:
-// Star Map, Draconic Gift, Gift of the Green, Walker in Dreams, Verdant
-// Grasp), which is worse than showing them untracked.
+// RE_FREE_INNATE_CAST: captura "cast X without expending a spell slot"
+// para mostrar estos triggers aunque no tengan un recurso rastreable.
 const RE_FREE_INNATE_CAST = /(?:cast|lanza(?:r|s)?)[\s\S]{0,80}?(?:without expending|sin gastar)[\s\S]{0,30}?(?:spell slot|espacio de conjuro)/i;
 
 function classifyTrigger(text) {
@@ -1078,45 +1095,21 @@ function classifyTrigger(text) {
 
 // ═══════════════════════════════════════════════════
 //  CUSTOM RESOURCE POOL / CHARGES DETECTION
-//  Features like Lay on Hands ("a pool equal to five times
-//  your paladin level") or items with N charges become extra
-//  trackers, independent of their action-economy classification.
+//  Imponer las Manos, cargas de ítem, pools por modificador, etc.
 // ═══════════════════════════════════════════════════
 const NUM_WORDS = { uno:1,dos:2,tres:3,cuatro:4,cinco:5,seis:6,siete:7,ocho:8,nueve:9,diez:10,
   one:1,two:2,three:3,four:4,five:5,six:6,seven:7,eight:8,nine:9,ten:10 };
 
 // Multiplier × class-level pool (e.g. "five times your paladin level").
-// Guard: the match must appear in a USES context (preceded by "pool", "uses",
-// "number of", or "reserva" within 120 chars) — confirmed false-positive
-// without this on Doomsday Device (HB Artificer), where "five times your
-// artificer level" describes the HP of a constructed device, and "pool"
-// appears later as flavor text ("a pool of acid"). The nearby-word check
-// replaces the old whole-text RE_POOL_WORD scan.
+// Guard: keyword de contexto debe estar dentro de 120 chars del match.
 const RE_POOL_LEVEL = /(\d+|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|one|two|three|four|five|six|seven|eight|nine|ten)\s*(?:veces|times|[×x])\s*(?:tu nivel de\s+([a-záéíóúñ]+)|your\s+([a-z]+)\s+level)/i;
 const RE_POOL_CONTEXT = /\b(?:pool|reserva|piscina|uses?|usos?|number of charges|cargas?)\b/i;
 
-// Charges ("has N charges"). Guard: if "this item"/"this weapon"/"this armor"/
-// "this device" immediately precedes the match, it's describing an ITEM's
-// stats inside a feat's d20 table, not the feature's own uses — confirmed on
-// Expanded Contraptions (HB Artificer): "This item has 4 charges".
-// Intentionally does NOT block "the staff has 10 charges" or generic "the
-// [noun] has N charges" — those are legitimate item pools (Staff of the
-// Woodlands). Only "this [category]" (pointing to a table entry) is excluded.
+// Guard: "this item/weapon/armor/device" precede al match → tabla interna, no pool.
 const RE_CHARGES = /(?:tiene|has|with)\s+(\d+)\s+(?:cargas?|charges)/i;
 const RE_CHARGES_ITEM_PREFIX = /\bthis\s+(?:item|weapon|armor|device|cantrip|tool)\s*$/i;
 
-// "N times equal to your [ability] modifier (minimum of once)" and
-// "N times equal to your proficiency bonus" — confirmed needed against
-// ALL six characters in the corpus: Bo (STR/CON/WIS), Rhyo (WIS/CON
-// via Focus), Dorym (CHA), Test_PC Druid (WIS/PB), Warlock (CHA/PB),
-// and 38 feats in the Artificer (INT/PB). Currently NONE of these produce
-// a tracker unless they also happen to have a native <tracker> element —
-// the feature displays but with no visible usage limit.
-//
-// "minimum of once"/"minimum of 1" guard prevents synthesizing a tracker
-// for abilities that just mention "healing equal to your INT modifier" or
-// "damage equal to your CHA modifier" — those contain the same phrase
-// structure but are NOT pool-size formulas.
+// "N times equal to your [mod/prof]" — solo con frase de recuperación de usos.
 const RE_SCALING_BY_MOD = /number of times equal to(?:\s+(?:twice|double|half))?\s+your\s+(strength|dexterity|constitution|intelligence|wisdom|charisma|str|dex|con|int|wis|cha)\s+modifier|veces igual a tu modificador de\s+(fuerza|destreza|constituci[oó]n|inteligencia|sabidur[ií]a|carisma)/i;
 const RE_SCALING_BY_PROF = /number of times equal to your proficiency bonus|veces igual a tu bono de competencia/i;
 const RE_SCALING_REGAIN = /\bregain(?:\s+all)?\s+(?:expended\s+)?uses|\brecuperas?\s+(?:todos\s+los\s+usos|las\s+cargas?)/i;
@@ -1225,36 +1218,12 @@ function fullDescClean(text) {
 // ═══════════════════════════════════════════════════
 //  ACTIVE EFFECTS ENGINE
 // ═══════════════════════════════════════════════════
-//  G.activeEffects = {
-//    [id]: { id, label, sourceId, concentration, duration,
-//             roundsLeft, appliesTo, mechanicFlags:[] }
-//  }
-//  G.encounterState = {
-//    targetParalyzed: bool, targetAsleep: bool,
-//    targetProne: bool, targetBlinded: bool,
-//    targetConc: bool, numTargets: int, alliesInRange: int
-//  }
-//
-//  mechanicFlags (strings consumed by buildSuggestions):
-//    'extra_attack_action'    → Haste: 1 acción extra de ataque por turno
-//    'double_speed'           → Haste: velocidad x2
-//    'prevents_spellcasting'  → Rabia: no puede lanzar conjuros
-//    'advantage_atk'          → ventaja en ataques (invisible, Blessing…)
-//    'disadvantage_atk'       → desventaja en ataques
-//    'bps_resistance'         → resistencia a cortante/perforante/contundente
-//    'advantage_saving'       → ventaja en saving throws
-//    'ac_bonus'               → bonus de CA mientras activo
-//    'atk_bonus'              → bonus a ataques mientras activo
-//    'crit_range_19'          → crítico en 19-20 (Champion Fighter, etc.)
-//    'additional_spell_action' → puede lanzar un conjuro adicional (acción del hechizo)
-//    'temp_hp_regen'          → regenera THP cada turno
-// ═══════════════════════════════════════════════════
+//  Gestiona G.activeEffects (efectos vivos: concentración, rabia…)
+//  y G.encounterState (condiciones objetivo, nº targets, aliados).
+//  mechanicFlags[] → buildSuggestions() los lee para adaptar sugerencias.
 
-// EFFECT_CATALOG: named effect templates.
-// Each ability/spell that generates an effect refers to one of these by key.
-// The parser tags abilities at parse-time with an 'effectKey' field; the
-// render uses that to offer an "Activar efecto" button; G.activeEffects
-// stores the live instance with its runtime state.
+// EFFECT_CATALOG: plantillas de efectos. El parser etiqueta habilidades
+// con effectKey en parse time; el render ofrece "⚡ Activar".
 const EFFECT_CATALOG = {
   haste_self: {
     label: '⚡ Acelerar (propio)',
@@ -1349,18 +1318,9 @@ const EFFECT_CATALOG = {
 };
 
 // ── Text patterns → effectKey detection ──────────────
-// Two-layer detection:
-// 1. By SPELL/ABILITY NAME (fastest, most reliable, bilingual):
-//    Exact name matching after normalization catches the common case where
-//    the text is in Spanish but the mechanic is clearly identified by name.
-// 2. By TEXT CONTENT (catches renamed/homebrew variants):
-//    Checked only when the name doesn't match — covers feats that have
-//    the same mechanic under a different name (e.g. "Combat Haste" HB).
-//
-// selfOrAlly: true = player can choose to target self OR an ally before use.
-//             The render shows a [Yo/Aliado] toggle so the caster can declare
-//             whether they're buffing themselves (which activates the
-//             mechanical flag locally) or an ally (which only tracks conc).
+// Detección en dos capas: primero por nombre del hechizo (bilingüe,
+// más robusto), luego por texto libre. selfOrAlly=true muestra el
+// toggle [Yo/Aliado] antes de activar el efecto.
 const EFFECT_NAME_MAP = [
   // ── Haste (only self-buff variant grants extra action) ──
   { re:/^(acelerar|haste)(\s+\(?\w*\)?)?$/i,     key:'haste_self',         selfOrAlly:true },
@@ -1498,7 +1458,6 @@ function tickEffects() {
   });
 }
 
-
 //  Classifies any ability/spell by what it DOES, based on
 //  its description text (bilingual EN/ES). Powers the
 //  generic "Sugerencias" combo system below.
@@ -1587,7 +1546,6 @@ const SKIP_NAMES = /^(description|descripci[oó]n|characteristics|caracter[ií]s
 
 function buildAbilities(entries, level, mods, prof, weapons, spellEntries, spellDC, trackers) {
   const out = { action:[], bonus:[], reaction:[], utility:[], trigger:[], passive:[] };
-
 
   const attacks = level >= 11 ? 3 : level >= 5 ? 2 : 1;
 
@@ -1706,14 +1664,7 @@ function buildAbilities(entries, level, mods, prof, weapons, spellEntries, spell
 
     seen.add(key);
 
-    // If this ability has its own named resource pool (e.g. "Imponer las
-    // Manos" has a 40-point healing pool), set pc=0 and store ownPool so
-    // the render can show an inline pool stepper instead of charging from
-    // an unrelated sorcery/PC tracker. Without this, the "gastar 5 puntos
-    // de golpe de tu reserva" phrase in the Lay on Hands description was
-    // matching detectPCCost (which finds any "gastar N puntos"), and then
-    // the null resKey fell back to RE_PC_TRACKER_FALLBACK, which picked
-    // "Puntos de Hechicería" on Dorym — confirmed live bug.
+    // ownPool: habilidad con su propio pool (ej: Imponer las Manos) → pc=0.
     const poolTracker = (trackers || []).find(t =>
       t.isPool && t.label.toLowerCase() === e.name.trim().toLowerCase()
     );
@@ -2250,10 +2201,7 @@ function buildSuggestions() {
   const ES = G.encounterState || {};
   const numTargets = Math.max(1, ES.numTargets || 1);
 
-  // ── Context modifiers derived from active effects + encounter state ──
-  // These scalars adjust the "value" of certain suggestion categories
-  // without changing whether they're shown — the engine still shows all
-  // available categories, but ranks within a category using these weights.
+  // Modificadores de contexto: ajustan el ranking sin ocultar categorías.
   const atkAdvantage    = hasEffect('advantage_atk')      || ES.targetParalyzed || ES.targetAsleep || ES.targetProne;
   const atkBonus        = hasEffect('atk_bonus');          // Bless adds d4
   const hexActive       = hasEffect('hex_active');         // +d6 per hit
@@ -2318,10 +2266,7 @@ function buildSuggestions() {
     if (Object.keys(picks).length) results.push({ ...cat, picks });
   });
 
-  // ── EXTRA ACTION from Haste ──────────────────────
-  // Haste on self gives one extra action that can only be used for Attack,
-  // Dash, Disengage, Hide, or Use Object — NOT for a leveled spell. We
-  // synthesize a synthetic "use your extra Haste attack" suggestion here.
+  // Acción extra de Acelerar (solo ataque/dash/etc, no conjuro)
   if (extraAtkAction) {
     const weaponAttack = [...(char.abilities.action || [])].find(ab =>
       ab.source === 'weapon' && !G.hidden.abilities[ab.id] && !G.actionUsed
@@ -2835,11 +2780,7 @@ function applyAbility(id, flag, pc, once, spellLevel, resKey, slotPrefix) {
   if (spellLevel > 0) spendSpellSlot(spellLevel, slotPrefix);
   if (once) G.oncePerTurn[id] = true;
 
-  // Auto-activate concentration effect when a spell with a known effectKey is cast.
-  // This removes the friction of pressing "⚡ Activar" separately — if the player
-  // clicks "Usar" on Acelerar, the Haste effect should immediately track as active.
-  // selfOrAlly defaults to the catalog's own appliesTo unless the player had toggled
-  // it (stored in G.castTarget[id]).
+  // Auto-activar efecto de concentración al usar el hechizo.
   const allAbs = [...(char.abilities.action||[]), ...(char.abilities.bonus||[]),
                   ...(char.abilities.reaction||[]), ...(char.abilities.utility||[])];
   const ab = allAbs.find(a => a.id === id);
@@ -2874,22 +2815,12 @@ function applySuggestionCombo(idx) {
   toast('Combo aplicado');
 }
 
-// resKey identifies WHICH resource pool to spend from (see RESOURCE_TYPES
-// above). Passing it through explicitly — instead of re-deriving it from
-// a single shared global lookup — is the actual fix for the cross-pool
-// collision confirmed on Bo (Psionic Power wrongly spending Superiority
-// Die) and the reason Channel Divinity auto-tracking is now safe on
-// multiclass characters like Dorym.
 function spendResource(n, resKey) {
   const t = findResTracker(resKey);
   if (!t) return;
   G.trackers[t.id] = Math.max(0, (G.trackers[t.id] ?? t.max) - n);
 }
 
-// slotPrefix defaults to the normal 'sl' (regular spell slots). Pact
-// Magic (Warlock) spells pass 'pactsl' instead, so they decrement their
-// own independently-recharging pool rather than a nonexistent/wrong
-// shared one — see the Pact Magic comment block in parseFC5eXML.
 function spendSpellSlot(level, slotPrefix) {
   const t = char.trackers.find(t => t.id === `${slotPrefix || 'sl'}${level}`);
   if (!t) return;
@@ -3184,12 +3115,7 @@ function loadSaved() {
 // ═══════════════════════════════════════════════════
 //  IMPORT
 // ═══════════════════════════════════════════════════
-// ═══════════════════════════════════════════════════
-//  IMPORT
-// ═══════════════════════════════════════════════════
-// opts.fromShare: cuando viene de Compartir (FC5e u otra app), el toast
-// es distinto ("reemplazado" en vez de "cargado") y se fuerza el reemplazo
-// del personaje aunque ya hubiera uno cargado — ver processSharedFile().
+
 function importXML(xmlText, opts) {
   opts = opts || {};
   try {
@@ -3225,45 +3151,44 @@ document.getElementById('file-input').addEventListener('change', e => {
 // ═══════════════════════════════════════════════════
 //  SHARE TARGET
 // ═══════════════════════════════════════════════════
-// processSharedFile(): lee el XML/.dnd5e que el Service Worker dejó en
-// caché tras interceptar el POST de share_target (ver sw.js handleSharePost),
-// sin validar tipo MIME ni extensión — FC5e envía archivos genéricos
-// (application/octet-stream) y el parser de abajo (parseFC5eXML) ya se
-// encarga de fallar con un mensaje claro si el contenido no es válido.
-//
-// IMPORTANTE: se llama ANTES que loadSaved() en init() — si solo se
-// llamara cuando no hay personaje guardado, compartir un XML nuevo NUNCA
-// reemplazaría al personaje actual (que es justamente el caso normal de
-// uso: ya tienes a Dorym cargado y quieres reemplazarlo por una versión
-// actualizada que acabas de exportar desde FC5e).
-// ── Debug panel helpers ──────────────────────────────────────────────
-// Panel temporal de diagnóstico visible en pantalla (sin DevTools).
-// Eliminar cuando el share target funcione correctamente.
-let _dbgEl = null;
+// Lee el archivo compartido desde FC5e (caché share-v1 → pendiente).
+// Corre ANTES que loadSaved() para reemplazar personaje ya cargado.
+// ── Debug panel (solo en error) ──────────────────────────────────────
+// Acumula logs en memoria; solo crea el panel visible si dbgError() es
+// llamado. En éxito el panel no aparece en absoluto.
+const _dbgLog = [];
 function dbg(msg, color) {
-  if (!_dbgEl) {
-    _dbgEl = document.createElement('div');
-    _dbgEl.id = 'share-debug';
-    Object.assign(_dbgEl.style, {
+  _dbgLog.push({ msg, color: color || '#e2e8f0', ts: new Date().toISOString().slice(11,23) });
+  console.log('[SHARE]', msg);
+}
+function dbgError(msg) {
+  dbg(msg, '#fca5a5');
+  // Crear y mostrar el panel con todo el historial acumulado
+  let el = document.getElementById('share-debug');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'share-debug';
+    Object.assign(el.style, {
       position:'fixed', bottom:'60px', left:'8px', right:'8px', zIndex:'9999',
-      background:'#0a0a14', border:'2px solid #f59e0b', borderRadius:'8px',
+      background:'#0a0a14', border:'2px solid #ef4444', borderRadius:'8px',
       padding:'10px', fontFamily:'monospace', fontSize:'11px',
       color:'#e2e8f0', maxHeight:'55vh', overflowY:'auto', lineHeight:'1.5'
     });
-    const btn = document.createElement('button');
-    btn.textContent = '✕ cerrar';
-    Object.assign(btn.style, { float:'right', background:'none', border:'none', color:'#f59e0b', cursor:'pointer', fontSize:'12px' });
-    btn.onclick = () => _dbgEl.remove();
-    _dbgEl.appendChild(btn);
-    _dbgEl.appendChild(document.createElement('hr'));
-    document.body.appendChild(_dbgEl);
+    const hdr = document.createElement('div');
+    hdr.innerHTML = '<strong style="color:#ef4444">⚠️ Error al cargar personaje compartido</strong>'
+      + '<button onclick="this.parentElement.parentElement.remove()" '
+      + 'style="float:right;background:none;border:none;color:#94a3b8;cursor:pointer;font-size:12px">✕</button>';
+    el.appendChild(hdr);
+    el.appendChild(document.createElement('hr'));
+    document.body.appendChild(el);
   }
-  const line = document.createElement('div');
-  line.style.color = color || '#e2e8f0';
-  line.textContent = new Date().toISOString().slice(11,23) + ' ' + msg;
-  _dbgEl.appendChild(line);
-  _dbgEl.scrollTop = _dbgEl.scrollHeight;
-  console.log('[SHARE-DEBUG]', msg);
+  _dbgLog.forEach(entry => {
+    const line = document.createElement('div');
+    line.style.color = entry.color;
+    line.textContent = entry.ts + ' ' + entry.msg;
+    el.appendChild(line);
+  });
+  el.scrollTop = el.scrollHeight;
 }
 
 async function processSharedFile() {
@@ -3273,15 +3198,12 @@ async function processSharedFile() {
 
   history.replaceState({}, '', location.pathname);
   try {
-    dbg('Abriendo caché share-v1…');
     const cache = await caches.open('share-v1');
     const res   = await cache.match('pending');
-    dbg('Cache match "pending": ' + (res ? 'ENCONTRADO ✅' : 'VACÍO ❌'), res ? '#86efac' : '#fca5a5');
     if (!res) {
-      dbg('No hay archivo pendiente en caché. Posibles causas:', '#fca5a5');
-      dbg('  · El SW no interceptó el POST (¿versión vieja instalada?)', '#fca5a5');
-      dbg('  · El campo formData no se llama "character"', '#fca5a5');
-      dbg('  · El archivo llegó vacío desde FC5e', '#fca5a5');
+      dbgError('No hay archivo pendiente en caché.');
+      dbgError('  · SW puede no haber interceptado el POST (¿versión vieja instalada?)');
+      dbgError('  · El archivo llegó vacío desde FC5e');
       return false;
     }
 
@@ -3295,7 +3217,7 @@ async function processSharedFile() {
         debugData.forEach(line => dbg('  ' + line, '#93c5fd'));
         await debugCache.delete('pending-debug');
       } else {
-        dbg('(No hay datos de diagnóstico del FormData — SW versión anterior)', '#fca5a5');
+        dbgError('Sin datos de diagnóstico del FormData — SW versión anterior.');
       }
     } catch {}
 
@@ -3304,10 +3226,9 @@ async function processSharedFile() {
 
     await cache.delete('pending');
     const buffer = await res.arrayBuffer();
-    dbg('ArrayBuffer recibido, tamaño: ' + buffer.byteLength + ' bytes', '#86efac');
 
     if (buffer.byteLength === 0) {
-      dbg('❌ El buffer está vacío — el SW recibió un archivo de 0 bytes', '#fca5a5');
+      dbgError('El buffer está vacío — el SW recibió un archivo de 0 bytes.');
       return false;
     }
 
@@ -3318,7 +3239,8 @@ async function processSharedFile() {
 
     const isZip = bytes[0]===0x50 && bytes[1]===0x4B && bytes[2]===0x03 && bytes[3]===0x04;
     const isXml = bytes[0]===0x3C; // '<'
-    dbg('Formato detectado: ' + (isZip ? 'ZIP (.dnd5e) ✅' : isXml ? 'XML plano ✅' : 'DESCONOCIDO ❌'), isZip||isXml ? '#86efac' : '#fca5a5');
+    if (!isZip && !isXml) dbgError('Formato desconocido. Magic bytes: ' + magic);
+    else dbg('Formato: ' + (isZip ? 'ZIP (.dnd5e)' : 'XML plano'));
 
     if (isZip) {
       try {
@@ -3358,12 +3280,13 @@ async function processSharedFile() {
 
         dbg('XML descomprimido, longitud: ' + xmlText.length + ' chars', '#86efac');
         dbg('Inicio XML: ' + xmlText.slice(0,80).replace(/\n/g,' '));
-        dbg('Contiene <character>: ' + xmlText.includes('<character>'), xmlText.includes('<character>') ? '#86efac' : '#fca5a5');
+        if (!xmlText.includes('<character>')) dbgError('XML no contiene <character> — puede no ser un personaje de FC5e.');
+        else dbg('Contiene <character>: sí');
         importXML(xmlText, { fromShare: true });
         return true;
 
       } catch (zipErr) {
-        dbg('❌ Error descomprimiendo ZIP: ' + zipErr.message, '#fca5a5');
+        dbgError('Error descomprimiendo ZIP: ' + zipErr.message);
         return false;
       }
     } else {
@@ -3375,7 +3298,7 @@ async function processSharedFile() {
       return true;
     }
   } catch(e) {
-    dbg('❌ Excepción inesperada: ' + e.message + ' | ' + e.stack?.slice(0,120), '#fca5a5');
+    dbgError('Excepción inesperada: ' + e.message);
   }
   return false;
 }
@@ -3422,15 +3345,7 @@ function reloadForUpdate() {
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js').catch(()=>{});
 
-  // Mensajes en vivo desde el SW:
-  //  - UPDATE_AVAILABLE: el shell cambió en el servidor → mostrar banner
-  //  - SHARED_FILE: archivo compartido recibido mientras la app ya estaba
-  //    abierta. Nota: por cómo funciona el Web Share Target API, compartir
-  //    SIEMPRE navega/recarga la ventana de la app (no hay forma de evitar
-  //    eso a nivel de plataforma) — pero este listener actúa como respaldo
-  //    inmediato para el instante entre que el SW recibe el POST y la
-  //    navegación termina de cargar, evitando que el usuario vea una
-  //    pantalla en blanco o el personaje viejo por un momento.
+  // Mensajes desde el SW: UPDATE_AVAILABLE y SHARED_FILE_PENDING.
   navigator.serviceWorker.addEventListener('message', event => {
     if (event.data?.type === 'UPDATE_AVAILABLE') {
       updateAvailable = true;
@@ -3441,12 +3356,7 @@ if ('serviceWorker' in navigator) {
     }
   });
 
-  // Chequeo activo: cuando la app vuelve a primer plano (el jugador la
-  // reabre después de un rato), forzar al navegador a revisar si sw.js
-  // cambió en el servidor. Complementa la detección pasiva de
-  // networkFirst() en sw.js, que solo detecta cambios cuando efectivamente
-  // se hace un fetch — si la app estuvo cerrada/en segundo plano sin pedir
-  // nada a la red, esa detección pasiva nunca se dispara por sí sola.
+  // Al volver a primer plano, revisar si hay actualización del SW.
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
       navigator.serviceWorker.getRegistration().then(reg => reg?.update());

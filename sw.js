@@ -13,7 +13,7 @@ const SHELL_FILES   = [
   '/combat_tracker/icon.svg'
 ];
 
-// ── INSTALL: precachear el shell y activar inmediatamente ──────────────
+// ── Install ──
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_VERSION)
@@ -22,7 +22,7 @@ self.addEventListener('install', event => {
   );
 });
 
-// ── ACTIVATE: borrar cachés viejas y tomar control de todos los clientes
+// ── Activate: borrar cachés viejas, tomar control ──────────────────────
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys()
@@ -55,7 +55,7 @@ self.addEventListener('fetch', event => {
   event.respondWith(networkFirst(event.request));
 });
 
-// ── Network-First con notificación de actualización ───────────────────
+// ── Network-First con notificación de actualización ─────────────────
 async function networkFirst(request) {
   const cache = await caches.open(CACHE_VERSION);
   const cachedResponse = await cache.match(request);
@@ -67,11 +67,7 @@ async function networkFirst(request) {
       const url = new URL(request.url);
       const isShellFile = SHELL_FILES.some(f => url.pathname.endsWith(f) || url.pathname === f);
 
-      // Solo avisar si es un archivo del shell Y su contenido cambió de
-      // verdad respecto a lo que ya teníamos cacheado — evita el falso
-      // positivo de mostrar "actualización disponible" en la primerísima
-      // carga (cuando no había nada cacheado todavía) o en cada recarga
-      // normal cuando el archivo es idéntico byte a byte.
+      // Avisar solo si el contenido del shell cambió de verdad.
       if (isShellFile && cachedResponse) {
         const [newText, oldText] = await Promise.all([
           networkResponse.clone().text().catch(() => null),
@@ -108,8 +104,7 @@ async function handleSharePost(request) {
   try {
     const formData = await request.formData();
 
-    // LOG DIAGNÓSTICO: listar TODOS los campos y sus tipos para identificar
-    // cuál contiene el archivo real (el nombre puede no ser "character")
+    // Log diagnóstico: listar campos del FormData para debug.
     const debugInfo = [];
     for (const [key, value] of formData.entries()) {
       if (value instanceof File) {
@@ -125,11 +120,8 @@ async function handleSharePost(request) {
       headers: { 'Content-Type': 'application/json' }
     }));
 
-    // FC5e envía DOS entradas con key="character":
-    //   1. shared.txt (129 bytes) — texto descriptivo, llega primero
-    //   2. Nombre.xml / Nombre.dnd5e — el archivo real del personaje
-    // formData.get() solo retorna el primero (el texto), así que usamos
-    // getAll() y nos quedamos con el File de mayor tamaño.
+    // FC5e envía dos entradas 'character': texto descriptivo y el archivo real.
+    // getAll() + selección por tamaño asegura tomar el archivo, no el texto.
     let file = null;
     const allFiles = formData.getAll('character');
     for (const candidate of allFiles) {
@@ -157,7 +149,6 @@ async function handleSharePost(request) {
         client.postMessage({ type: 'SHARED_FILE_PENDING' });
       });
     } else {
-      // Guardar señal de que no se encontró archivo
       await shareCache.put('pending', new Response('NO_FILE', {
         headers: { 'Content-Type': 'text/plain' }
       }));
