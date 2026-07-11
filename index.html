@@ -408,9 +408,9 @@ html,body{height:100%;background:var(--bg);color:var(--text);
       <div class="hdr-meta" id="hdr-meta">—</div>
     </div>
     <div class="round-ctrl">
-      <button class="round-btn" onclick="addRound(-1)">−</button>
+      <button class="round-btn" onclick="addRound(-1)" title="Corregir número de ronda (no reinicia el turno)">−</button>
       <div class="round-display">Ronda <span id="hdr-round">1</span></div>
-      <button class="round-btn" onclick="addRound(1)">+</button>
+      <button class="round-btn" onclick="addRound(1)" title="Empieza tu turno nuevo: acción/adicional frescas, reacción se bloquea">+</button>
     </div>
   </div>
   <div class="content" id="content"></div>
@@ -1320,6 +1320,18 @@ const EFFECT_CATALOG = {
     concentration: true,
     appliesTo: 'self'
   },
+  brazos_yo_astral: {
+    label: '👊 Brazos del Yo Astral',
+    mechanicFlags: ['astral_arms_active'],  // habilita usar SAB en el ataque sin armas si conviene
+    concentration: false,
+    appliesTo: 'self'
+  },
+  rostro_yo_astral: {
+    label: '🎭 Rostro del Yo Astral',
+    mechanicFlags: [],
+    concentration: false,
+    appliesTo: 'self'
+  },
   concentration_generic: {
     label: '🔮 Concentración (activa)',
     mechanicFlags: [],
@@ -1357,6 +1369,9 @@ const EFFECT_NAME_MAP = [
   { re:/^(rabia|rage)(\s+of\s+\w+)?$/i,             key:'rage',             selfOrAlly:false },
   // ── Bane (debuff on targets, tracks concentration only) ──
   { re:/^(perdici[oó]n|bane)(\s+\(?\w*\)?)?$/i,    key:'concentration_generic', selfOrAlly:false },
+  // ── Guerrero del Yo Astral (Monje) ──
+  { re:/brazos del yo astral/i,                     key:'brazos_yo_astral', selfOrAlly:false },
+  { re:/rostro del yo astral/i,                     key:'rostro_yo_astral', selfOrAlly:false },
 ];
 
 // Checked after name — catches renamed/homebrew variants and feats
@@ -1487,7 +1502,7 @@ const TAG_RULES = [
   { tag:'heal',    re:/recuper(?:as?|aci[oó]n)\b|san(?:a|ar|as|aci[oó]n)\b|cura(?:s|ci[oó]n)?\b|regain.*hit points|hit points.*regain|heal(?:ing)?\b/i },
   { tag:'defense', re:/resistencia a|resistance to|puntos de golpe temporal|temporary hit points|\bca\s*\+|armor class|esquivar|dodge|cobertura total|immunity|inmunidad/i },
   { tag:'mobility',re:/velocidad de (?:vuelo|excavaci[oó]n|trepar|nataci[oó]n)|flying speed|teletransport|teleport|salto.*(?:pies|feet)|jump|no provoca? ataques? de oportunidad|without provoking opportunity/i },
-  { tag:'damage',  re:/\d+d\d+|puntos? de da[ñn]o|recib(?:e|en|es|ir[aá]s?)\s+da[ñn]o|hit points of damage|damage\b/i },
+  { tag:'damage',  re:/\d+d\d+|puntos? de da[ñn]o|recib\w*\s+da[ñn]o|hit points of damage|damage\b/i },
   { tag:'buff',    re:/ventaja en|advantage on|bonificador (?:a|de)|bonus to|gana[ns]? .* puntos de golpe m[aá]ximos|increases by/i },
 ];
 
@@ -1935,7 +1950,7 @@ function render() {
 
   // ── Controls ─────────────────────────────────────
   h += `<div class="ctrl-row">
-    <button class="btn-ctrl accent" onclick="finTurn()">Fin de turno</button>
+    <button class="btn-ctrl accent" onclick="finTurn()" title="Termina tu turno y habilita la reacción (no avanza la ronda)">Fin de turno</button>
     <button class="btn-ctrl" onclick="shortRest()">Desc. corto</button>
     <button class="btn-ctrl danger" onclick="longRest()">Desc. largo</button>
   </div>`;
@@ -2257,6 +2272,7 @@ function buildSuggestions() {
   const huntersMarkActive = hasEffect('hunters_mark_active'); // +d6 per hit
   const extraAtkAction  = hasEffect('extra_attack_action') && !G.actionUsed; // Haste self
   const spellsBlocked   = hasEffect('prevents_spellcasting');
+  const astralArmsActive = hasEffect('astral_arms_active'); // Brazos del Yo Astral: SAB en vez de FUE/DES si conviene
   const targetVulnerable = ES.targetParalyzed || ES.targetAsleep; // auto-crit if adjacent
 
   SUGGESTION_CATS.forEach(cat => {
@@ -2286,6 +2302,10 @@ function buildSuggestions() {
             if ((x.tags||[]).includes('aoe')) d *= Math.min(numTargets, 4);
             if (atkAdvantage && (x.source === 'weapon' || (x.tags||[]).includes('damage'))) d *= 1.25;
             if (hexActive || huntersMarkActive) d += 3.5; // expected d6
+            if (astralArmsActive && x.id === '__attack') {
+              const wisEdge = char.mods.wis - Math.max(char.mods.str, char.mods.dex);
+              if (wisEdge > 0) d += wisEdge; // Brazos del Yo Astral: SAB en vez de FUE/DES
+            }
             return d;
           };
           return scoreOf(b) > scoreOf(a) ? b : a;
@@ -3074,27 +3094,46 @@ function calcApply(mode) {
   save(); render();
 }
 
-function addRound(d) {
-  G.round = Math.max(1, G.round + d);
-  document.getElementById('hdr-round').textContent = G.round;
-  save();
-}
-
-function finTurn() {
+// Reinicia el estado de turno: acción/acción adicional frescas, reacción
+// bloqueada de nuevo (hasta el próximo "Fin de turno"), contadores de "una
+// vez por turno" limpios. Se usa al empezar un turno nuevo (avanzar de
+// ronda) y en los descansos.
+function resetTurnState() {
   G.actionUsed = G.bonusUsed = G.reactionUsed = false;
-  G.reactionAvailable = true; // la reacción se habilita al salir de tu turno
+  G.reactionAvailable = false;
   G.lastUsedInSlot = {};
   G.oncePerTurn = {};
   G.comboUsed = {};
   G.lastSnapshot = null;
-  tickEffects();   // decrementa roundsLeft en efectos con duración de N rondas
-  G.round = (G.round || 1) + 1;
+}
+
+function addRound(d) {
+  G.round = Math.max(1, G.round + d);
+  if (d > 0) {
+    // "+" = terminaron los turnos de los demás (no rastreados) y empieza
+    // tu turno nuevo: acción/adicional frescas, reacción vuelve a bloquearse.
+    resetTurnState();
+    tickEffects();   // decrementa roundsLeft en efectos con duración de N rondas
+    save(); render();
+  } else {
+    // "-" = corrección manual del contador, no representa un turno nuevo.
+    document.getElementById('hdr-round').textContent = G.round;
+    save();
+  }
+}
+
+function finTurn() {
+  // Termina TU turno (empiezan los turnos no rastreados de los demás):
+  // la reacción se habilita, pero la ronda NO avanza todavía.
+  G.reactionAvailable = true;
   save(); render();
 }
 
 function shortRest() {
   char.trackers.forEach(t => { if (t.resetType === 1) G.trackers[t.id] = t.max; });
-  finTurn(); toast('Descanso corto — recursos recuperados');
+  resetTurnState();
+  save(); render();
+  toast('Descanso corto — recursos recuperados');
 }
 
 function longRest() {
@@ -3104,7 +3143,9 @@ function longRest() {
     if (!t.dawnDice) G.trackers[t.id] = t.max;
   });
   G.hp = char.hpMax; G.tempHp = 0; G.round = 1;
-  finTurn(); toast('Descanso largo — todo recuperado (items al amanecer pendientes)');
+  resetTurnState();
+  save(); render();
+  toast('Descanso largo — todo recuperado (items al amanecer pendientes)');
 }
 
 // Roll random charge recovery at dawn (e.g. Staff of the Woodlands: "1d6 + 4").
