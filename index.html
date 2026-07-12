@@ -114,6 +114,14 @@ html,body{height:100%;background:var(--bg);color:var(--text);
 .dc-badge b{color:var(--amber);font-size:.95rem}
 .trackers-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:6px;margin-bottom:10px}
 .tcard{background:var(--s1);border:1px solid var(--border);border-radius:var(--r-sm);padding:9px 10px;position:relative}
+
+/* Ability scores grid */
+.stats-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px}
+.stat-card{background:var(--s1);border:1px solid var(--border);border-radius:var(--r-sm);
+  padding:8px 6px;text-align:center}
+.stat-abbr{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.stat-score{font-size:1.05rem;font-weight:700;margin:2px 0}
+.stat-mod{font-size:.78rem;color:var(--blue)}
 .tcard-label{font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px;
   padding-right:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tcard-dots{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:4px}
@@ -160,6 +168,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);
 .sec-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
 .d-action{background:var(--blue)} .d-bonus{background:var(--green)}
 .d-reaction{background:var(--amber)} .d-combo{background:var(--muted)}
+.d-utility{background:var(--muted)}
 .sec-name{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
 .sec-used{margin-left:auto;font-size:.7rem;color:var(--red)}
 
@@ -209,12 +218,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);
 .sugg-total:active{opacity:.6}
 .sugg-total-val{color:var(--amber)}
 
-/* Utility / out-of-combat section */
-.util-toggle{display:flex;align-items:center;gap:7px;cursor:pointer;
-  background:var(--s1);border:1px solid var(--border);border-radius:var(--r-sm);
-  padding:9px 11px;margin-bottom:8px;font-size:.82rem;color:var(--muted);font-weight:600}
-.util-toggle .chev{margin-left:auto;font-size:.7rem;transition:transform .15s}
-.util-toggle.open .chev{transform:rotate(90deg)}
+/* Out-of-combat section: cards reuse the same .ab style as action cards */
 .ab.util .ab-costs{flex-direction:column}
 .usar-btn{background:var(--blue-bg);border:1px solid var(--blue-border);color:var(--blue);
   border-radius:var(--r-sm);padding:4px 9px;font-size:.7rem;font-weight:600;cursor:pointer;margin-top:4px}
@@ -445,7 +449,7 @@ function esc(s) {
 // ═══════════════════════════════════════════════════
 let char = null;
 let G = { round:1, hp:null, tempHp:0, actionUsed:false, bonusUsed:false,
-  reactionUsed:false, reactionAvailable:false, lastUsedInSlot:{}, oncePerTurn:{}, trackers:{}, showUtility:false,
+  reactionUsed:false, reactionAvailable:false, lastUsedInSlot:{}, oncePerTurn:{}, trackers:{},
   collapsed:{}, triggerSel:{}, castLevel:{}, poolAmt:{},
   hidden:{ abilities:{}, trackers:{} },
   activeEffects:{}, encounterState:{ numTargets:1, targetParalyzed:false,
@@ -931,7 +935,7 @@ function parseFC5eXML(xml) {
     [...allFeats, ...itemFeats], totalLevel, mods, prof, weapons, spellEntries, spellDC, trackers
   );
 
-  return { name, hpMax, hpCur, cName, cLvl:totalLevel, classInfo, raceName, prof, mods, trackers, abilities, spellDC, maxSpellLevel, ac:computedAC };
+  return { name, hpMax, hpCur, cName, cLvl:totalLevel, classInfo, raceName, prof, mods, scores, trackers, abilities, spellDC, maxSpellLevel, ac:computedAC };
 }
 
 // ── Classify a single ability text ──────────────────
@@ -955,6 +959,32 @@ function extractPiggybackTarget(text) {
   const m = (text || '').match(PIGGYBACK_RE);
   if (!m) return null;
   return (m[1] || m[2] || '').trim();
+}
+
+// Detecta rasgos que describen su beneficio como "N ataques sin armas"
+// (Ráfaga de Golpes, Ataque sin armas adicional, etc.) para poder estimar
+// su daño con el mismo daño-por-golpe que el ataque sin armas base.
+const NUM_WORDS_ES = { un:1, una:1, uno:1, dos:2, tres:3, cuatro:4, cinco:5, seis:6 };
+const NUM_WORDS_EN = { one:1, two:2, three:3, four:4, five:5, six:6 };
+function wordToNum(w) {
+  if (!w) return null;
+  const lw = w.toLowerCase();
+  if (/^\d+$/.test(lw)) return parseInt(lw);
+  return NUM_WORDS_ES[lw] || NUM_WORDS_EN[lw] || null;
+}
+function parseAttackCount(text) {
+  const m = (text||'').match(/\b(\d+|un|una|uno|dos|tres|cuatro|cinco|seis)\s+ataques?\s+sin\s+armas\b/i)
+         || (text||'').match(/\b(\d+|one|two|three|four|five|six)\s+unarmed\s+strikes?\b/i);
+  return m ? wordToNum(m[1]) : null;
+}
+// Detecta rasgos que MEJORAN el número de ataques de otro rasgo ya existente
+// (p.ej. "Concentración Agudizada" sube Ráfaga de Golpes de 2 a 3 ataques):
+// "...usar Ráfaga de golpes y hacer tres ataques sin armas en lugar de dos".
+function parseAttackCountUpgrade(text) {
+  const m = (text||'').match(/para usar ([^,.\n]+?) y hacer\s+(\d+|dos|tres|cuatro|cinco|seis)\s+ataques\s+sin\s+armas/i)
+         || (text||'').match(/to use ([^,.\n]+?) and make\s+(\d+|two|three|four|five|six)\s+unarmed\s+strikes/i);
+  if (!m) return null;
+  return { targetName: m[1].trim(), count: wordToNum(m[2]) };
 }
 
 // ── Classify a spell by its <time> field ────────────
@@ -1591,11 +1621,12 @@ function buildAbilities(entries, level, mods, prof, weapons, spellEntries, spell
   const unarmedSign = abMod >= 0 ? '+' : '';
   const unarmedDie = level >= 5 ? 8 : 4;
   const unarmedD = `1d${unarmedDie}${unarmedSign}${abMod}`;
+  const unarmedPerHit = (unarmedDie+1)/2 + abMod;
   const unarmedObj = {
     id:'__attack', name:'Atacar (sin armas)',
     desc:`${attacks} ${attacks>1?'ataques':'ataque'} · +${unarmedB} al impacto · ${unarmedD}`,
     full:null, pc:0, once:false, source:'class', spellLevel:0, dc:null,
-    dmgEstimate: Math.round(attacks * ((unarmedDie+1)/2 + abMod) * 10) / 10
+    dmgEstimate: Math.round(attacks * unarmedPerHit * 10) / 10
   };
   unarmedObj.tags = tagAbility(unarmedObj);
   out.action.push(unarmedObj);
@@ -1712,6 +1743,7 @@ function buildAbilities(entries, level, mods, prof, weapons, spellEntries, spell
     const full   = fullDescClean(e.text);
     const effInfo = detectEffectKey(e.name, e.text);
     const isConcentration = !!(effInfo?.effectKey && EFFECT_CATALOG[effInfo.effectKey]?.concentration);
+    const atkCount = (type === 'action' || type === 'bonus') ? parseAttackCount(e.text) : null;
 
     const obj = {
       id:`e${idx}`, name:e.name, desc,
@@ -1720,9 +1752,11 @@ function buildAbilities(entries, level, mods, prof, weapons, spellEntries, spell
       effectKey: effInfo?.effectKey ?? null,
       selfOrAlly: effInfo?.selfOrAlly ?? false,
       isConcentration,
-      piggybackOn: extractPiggybackTarget(e.text)
+      piggybackOn: extractPiggybackTarget(e.text),
+      dmgEstimate: atkCount ? Math.round(atkCount * unarmedPerHit * 10) / 10 : null
     };
     obj.tags = tagAbility(obj);
+    if (atkCount && !obj.tags.includes('damage')) obj.tags.push('damage');
     out[type].push(obj);
   });
 
@@ -1787,6 +1821,24 @@ function buildAbilities(entries, level, mods, prof, weapons, spellEntries, spell
     const target = allBuilt.find(o => o.id !== ab.id &&
       stripAccents(o.name).includes(stripAccents(ab.piggybackOn)));
     ab.piggybackOnId = target ? target.id : null;
+  });
+
+  // Attack-count upgrade resolution: un rasgo puede mejorar el número de
+  // ataques de OTRO ya existente (p.ej. Concentración Agudizada sube
+  // Ráfaga de Golpes de 2 a 3 ataques) — se busca en el texto de CUALQUIER
+  // rasgo (incluidos trigger/passive, donde suelen caer estas mejoras al no
+  // mencionar "acción adicional" por sí mismas) y se aplica al mayor valor.
+  const allForUpgrades = [...allBuilt, ...out.trigger, ...out.passive];
+  allForUpgrades.forEach(src => {
+    const upg = parseAttackCountUpgrade(src.full || src.desc || '');
+    if (!upg) return;
+    const target = allBuilt.find(o =>
+      stripAccents(o.name).includes(stripAccents(upg.targetName)));
+    if (!target) return;
+    const upgradedEstimate = Math.round(upg.count * unarmedPerHit * 10) / 10;
+    if (upgradedEstimate > (target.dmgEstimate || 0)) {
+      target.dmgEstimate = upgradedEstimate;
+    }
   });
 
   return out;
@@ -1886,15 +1938,19 @@ function render() {
     h += `</div>`;
   }
 
+  // ── Puntuaciones de característica (sobre Recursos) ─
+  h += renderAbilityScoresSection();
+
   // ── Trackers ─────────────────────────────────────
   const visTrackers = char.trackers.filter(t => !G.hidden.trackers[t.id]);
   const hiddenTCount = char.trackers.length - visTrackers.length;
 
   if (visTrackers.length > 0) {
     const trCollapsed = !!G.collapsed.trackers;
-    h += `<div class="util-toggle sec-toggle ${trCollapsed?'collapsed':''}" onclick="toggleSection('trackers')">
-      <span>📊 Recursos (${visTrackers.length})</span>
-      <span class="chev">▾</span>
+    h += `<div class="section"><div class="sec-head sec-toggle ${trCollapsed?'collapsed':''}" onclick="toggleSection('trackers')">
+      <div class="sec-dot d-utility"></div>
+      <span class="sec-name">📊 Recursos (${visTrackers.length})</span>
+      <span class="chev" style="margin-left:auto">▾</span>
     </div>`;
     if (!trCollapsed) {
     h += `<div class="trackers-grid">`;
@@ -1946,6 +2002,7 @@ function render() {
     });
     h += `</div>`;
     }
+    h += `</div>`;
   }
 
   // ── Controls ─────────────────────────────────────
@@ -2327,7 +2384,32 @@ function buildSuggestions() {
         Object.values(picks).forEach(p => total += estimateDamage(p.ab));
         if (smite) total += smite.dmg;
         if (atkAdvantage) total *= 1.1;   // rough EV increase from advantage
-        results.push({ ...cat, picks, smite, total });
+
+        // Rasgos "trigger" que se aplican SOBRE un golpe ya incluido en el
+        // combo (Golpe Aturdidor) o que reemplazan uno de los ataques por
+        // una maniobra (Ataques Diestros: Agarrar/Empujar/...) — no
+        // consumen su propia acción, así que se muestran como recordatorio
+        // en vez de forzarlos dentro del combo.
+        const hasUnarmedHits = Object.values(picks).some(p => p.ab.id === '__attack' || (p.ab.dmgEstimate != null && (p.ab.tags||[]).includes('damage') && p.ab.source !== 'weapon'));
+        let triggerNotes = [];
+        if (hasUnarmedHits) {
+          triggerNotes = (char.abilities.trigger || [])
+            .filter(ab => !G.hidden.abilities[ab.id])
+            .filter(ab => (ab.tags||[]).includes('control'))
+            .filter(ab => !(ab.once && G.oncePerTurn[ab.id]))
+            .filter(ab => {
+              if (!(ab.pc > 0)) return true;
+              const pcTracker = findResTracker(ab.resKey);
+              const pcCur = pcTracker ? (G.trackers[pcTracker.id] ?? pcTracker.max) : 99;
+              return pcCur >= ab.pc;
+            });
+        }
+        const maneuverNotes = hasUnarmedHits ? (char.abilities.bonus || [])
+          .filter(ab => !G.hidden.abilities[ab.id])
+          .filter(ab => /agarr|empuj|desarm|encaram/i.test(ab.name))
+          : [];
+
+        results.push({ ...cat, picks, smite, total, triggerNotes, maneuverNotes });
       }
       return;
     }
@@ -2415,6 +2497,25 @@ function renderSuggestions() {
         <span class="sugg-name">${esc(sm.ab.name)} (Nv.${sm.level})</span>
         <span class="sugg-extra">+${sm.dice}d${sm.die} ~${sm.dmg} dmg</span>
       </div>`;
+    }
+
+    if (s.key === 'damage' && s.triggerNotes && s.triggerNotes.length) {
+      s.triggerNotes.forEach(ab => {
+        h += `<div class="sugg-pick" style="opacity:.85" onclick="useTriggerResource('${ab.id}')">
+          <span class="sugg-slot">💡 Al impactar</span>
+          <span class="sugg-name">${esc(ab.name)}</span>
+          <span class="sugg-extra">${ab.pc>0?`${ab.pc} PC`:''}</span>
+        </div>`;
+      });
+    }
+    if (s.key === 'damage' && s.maneuverNotes && s.maneuverNotes.length) {
+      s.maneuverNotes.forEach(ab => {
+        const fn = `useAb('${ab.id}','bonusUsed',${ab.pc},${ab.once},0,'${ab.resKey||''}','sl')`;
+        h += `<div class="sugg-pick" style="opacity:.85" onclick="${fn}">
+          <span class="sugg-slot">💡 En vez de un golpe</span>
+          <span class="sugg-name">${esc(ab.name)}</span>
+        </div>`;
+      });
     }
 
     if (s.key === 'damage' && partCount > 1) {
@@ -2561,6 +2662,42 @@ function resetEncounterState() {
 // ═══════════════════════════════════════════════════
 //  PASSIVE / ALWAYS-ON TRAITS SECTION
 // ═══════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════
+//  ABILITY SCORES SECTION
+//  Muestra las 6 puntuaciones de característica (ya con
+//  bonos raciales/ASI/ítems aplicados) y su modificador.
+//  NOTA: las competencias de habilidad (skills) no se
+//  incluyen — el XML de FC5e las codifica como IDs
+//  numéricos internos (<proficiency>105</proficiency>,
+//  etc.) sin una tabla de referencia verificable, así que
+//  mapearlas a ciegas podría mostrar información incorrecta.
+// ═══════════════════════════════════════════════════
+const ABILITY_ABBR_ES = { str:'FUE', dex:'DES', con:'CON', int:'INT', wis:'SAB', cha:'CAR' };
+function renderAbilityScoresSection() {
+  if (!char.scores) return '';
+  const collapsed = !!G.collapsed.abilityScores;
+  let h = `<div class="section"><div class="sec-head sec-toggle ${collapsed?'collapsed':''}" onclick="toggleSection('abilityScores')">
+    <div class="sec-dot d-utility"></div>
+    <span class="sec-name">📐 Puntuaciones de característica</span>
+    <span class="chev" style="margin-left:auto">▾</span>
+  </div>`;
+  if (collapsed) return h + `</div>`;
+
+  h += `<div class="stats-grid">`;
+  ['str','dex','con','int','wis','cha'].forEach((k, i) => {
+    const score = char.scores[i];
+    const mod = char.mods[k];
+    const sign = mod >= 0 ? '+' : '';
+    h += `<div class="stat-card">
+      <div class="stat-abbr">${ABILITY_ABBR_ES[k]}</div>
+      <div class="stat-score">${score}</div>
+      <div class="stat-mod">${sign}${mod}</div>
+    </div>`;
+  });
+  h += `</div></div>`;
+  return h;
+}
+
 function renderPassiveSection() {
   const all = (char.abilities.passive || []).filter(a => !G.hidden.abilities[a.id]);
   if (!all.length) return '';
@@ -2601,14 +2738,14 @@ function renderUtilitySection() {
   const all = (char.abilities.utility || []).filter(a => !G.hidden.abilities[a.id]);
   if (!all.length) return '';
 
-  const open = !!G.showUtility;
-  let h = `<div class="util-toggle ${open?'open':''}" onclick="toggleUtility()">
-    <span>🧭 Fuera de combate (${all.length})</span>
-    <span class="chev">▶</span>
+  const collapsed = !!G.collapsed.utility;
+  let h = `<div class="section"><div class="sec-head sec-toggle ${collapsed?'collapsed':''}" onclick="toggleSection('utility')">
+    <div class="sec-dot d-utility"></div>
+    <span class="sec-name">🧭 Fuera de combate (${all.length})</span>
+    <span class="chev" style="margin-left:auto">▾</span>
   </div>`;
-  if (!open) return h;
+  if (collapsed) return h + `</div>`;
 
-  h += `<div class="section">`;
   all.forEach(ab => {
     SHORT_DESC[ab.id] = ab.desc;
     if (ab.full) FULL_DESC[ab.id] = ab.full;
@@ -2658,7 +2795,6 @@ function setCastLevel(id, delta, min, max) {
   G.castLevel[id] = Math.max(min, Math.min(max, cur + delta));
   save(); render();
 }
-function toggleUtility() { G.showUtility = !G.showUtility; save(); render(); }
 function useUtility(id, spellLevel, slotPrefix) {
   spendSpellSlot(spellLevel, slotPrefix);
   save(); render();
@@ -2785,9 +2921,12 @@ function useSmite(id, level) {
 // of charging an unrelated resource tracker (fix for Imponer las Manos).
 function useAbPool(id, flag, poolId, amount) {
   G[flag] = true;
+  G.lastUsedInSlot = G.lastUsedInSlot || {};
+  G.lastUsedInSlot[flag] = id;
   G.lastSnapshot = { flag, poolId, amount, trackers: { ...G.trackers } };
   const t = char.trackers.find(t => t.id === poolId);
   if (t) G.trackers[poolId] = Math.max(0, (G.trackers[poolId] ?? t.max) - amount);
+  autoActivateConcentration(id);
   save(); render();
 }
 
@@ -2848,16 +2987,10 @@ function toggleDesc(id) {
 //  apply* mutate state only (no save/render) so multi-step
 //  combos can apply several effects then render once.
 // ═══════════════════════════════════════════════════
-function applyAbility(id, flag, pc, once, spellLevel, resKey, slotPrefix) {
-  G.lastSnapshot = { flag, trackers: { ...G.trackers } };
-  G[flag] = true;
-  G.lastUsedInSlot = G.lastUsedInSlot || {};
-  G.lastUsedInSlot[flag] = id;
-  if (pc > 0) spendResource(pc, resKey);
-  if (spellLevel > 0) spendSpellSlot(spellLevel, slotPrefix);
-  if (once) G.oncePerTurn[id] = true;
-
-  // Auto-activar efecto de concentración al usar el hechizo.
+// Auto-activa el efecto de concentración de una habilidad al usarla (si
+// tiene effectKey y requiere concentración) — compartido por applyAbility
+// y useAbPool para que también funcione con habilidades de pool propio.
+function autoActivateConcentration(id) {
   const allAbs = [...(char.abilities.action||[]), ...(char.abilities.bonus||[]),
                   ...(char.abilities.reaction||[]), ...(char.abilities.utility||[])];
   const ab = allAbs.find(a => a.id === id);
@@ -2866,6 +2999,17 @@ function applyAbility(id, flag, pc, once, spellLevel, resKey, slotPrefix) {
       : (EFFECT_CATALOG[ab.effectKey]?.appliesTo || 'self');
     activateEffect(id, ab.effectKey, appliesTo);
   }
+}
+
+function applyAbility(id, flag, pc, once, spellLevel, resKey, slotPrefix) {
+  G.lastSnapshot = { flag, trackers: { ...G.trackers } };
+  G[flag] = true;
+  G.lastUsedInSlot = G.lastUsedInSlot || {};
+  G.lastUsedInSlot[flag] = id;
+  if (pc > 0) spendResource(pc, resKey);
+  if (spellLevel > 0) spendSpellSlot(spellLevel, slotPrefix);
+  if (once) G.oncePerTurn[id] = true;
+  autoActivateConcentration(id);
 }
 function applySmite(level) { spendSpellSlot(level); }
 
@@ -3223,7 +3367,7 @@ function importXML(xmlText, opts) {
     const allSectionKeys = ['action','bonus','reaction','trigger','suggestions','utility','passive','trackers','activeEffects','encounterState'];
     const collapsed = Object.fromEntries(allSectionKeys.map(k => [k, true]));
     G = { round:1, hp:char.hpCur, tempHp:0, actionUsed:false, bonusUsed:false,
-          reactionUsed:false, reactionAvailable:false, lastUsedInSlot:{}, oncePerTurn:{}, trackers:{}, showUtility:false,
+          reactionUsed:false, reactionAvailable:false, lastUsedInSlot:{}, oncePerTurn:{}, trackers:{},
           collapsed, triggerSel:{}, castLevel:{}, poolAmt:{},
           hidden:{ abilities:{}, trackers:{} },
           activeEffects:{},
