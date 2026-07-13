@@ -122,6 +122,18 @@ html,body{height:100%;background:var(--bg);color:var(--text);
 .stat-abbr{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
 .stat-score{font-size:1.05rem;font-weight:700;margin:2px 0}
 .stat-mod{font-size:.78rem;color:var(--blue)}
+
+.skills-list{display:flex;flex-direction:column;gap:1px}
+.skill-row{display:flex;align-items:center;gap:8px;padding:5px 4px;font-size:.82rem;
+  border-bottom:1px solid var(--border)}
+.skill-row:last-child{border-bottom:none}
+.skill-prof-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;background:transparent;
+  border:1px solid var(--hint)}
+.skill-row.proficient .skill-prof-dot{background:var(--green);border-color:var(--green)}
+.skill-row.proficient .skill-name{color:var(--text);font-weight:600}
+.skill-name{flex:1;color:var(--muted)}
+.skill-ability{font-size:.68rem;color:var(--hint);text-transform:uppercase}
+.skill-mod{font-weight:700;min-width:28px;text-align:right}
 .tcard-label{font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px;
   padding-right:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tcard-dots{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:4px}
@@ -791,6 +803,50 @@ function parseFC5eXML(xml) {
   const m = s => Math.floor((s - 10) / 2);
   const mods = { str:m(str), dex:m(dex), con:m(con), int:m(int_), wis:m(wis), cha:m(cha) };
 
+  // ── Skill proficiencies ────────────────────────────────────────────
+  // FC5e codifica las competencias de habilidad como <proficiency>N</proficiency>
+  // (hijo directo de <race>/<background>/<class>/dote seleccionada), con
+  // N=100..117 en orden alfabético estándar del PHB. Mapeo verificado
+  // cruzando 3 personajes de prueba contra sus competencias reales en FC5e.
+  // <autolevel> queda excluido (mismo criterio que ability scores) para no
+  // contar dotes/rasgos de niveles no alcanzados.
+  const SKILL_LIST = [
+    { id:100, key:'acrobatics',     label:'Acrobacias',         ability:'dex' },
+    { id:101, key:'animalHandling', label:'Trato con Animales', ability:'wis' },
+    { id:102, key:'arcana',         label:'Arcanos',            ability:'int' },
+    { id:103, key:'athletics',      label:'Atletismo',          ability:'str' },
+    { id:104, key:'deception',      label:'Engaño',             ability:'cha' },
+    { id:105, key:'history',        label:'Historia',           ability:'int' },
+    { id:106, key:'insight',        label:'Perspicacia',        ability:'wis' },
+    { id:107, key:'intimidation',   label:'Intimidación',       ability:'cha' },
+    { id:108, key:'investigation',  label:'Investigación',      ability:'int' },
+    { id:109, key:'medicine',       label:'Medicina',           ability:'wis' },
+    { id:110, key:'nature',         label:'Naturaleza',         ability:'int' },
+    { id:111, key:'perception',     label:'Percepción',         ability:'wis' },
+    { id:112, key:'performance',    label:'Interpretación',     ability:'cha' },
+    { id:113, key:'persuasion',     label:'Persuasión',         ability:'cha' },
+    { id:114, key:'religion',       label:'Religión',           ability:'int' },
+    { id:115, key:'sleightOfHand',  label:'Juego de Manos',     ability:'dex' },
+    { id:116, key:'stealth',        label:'Sigilo',             ability:'dex' },
+    { id:117, key:'survival',       label:'Supervivencia',      ability:'wis' },
+  ];
+  const directProfs = el => el
+    ? [...el.children].filter(c => c.tagName.toLowerCase() === 'proficiency').map(c => parseInt(c.textContent))
+    : [];
+  const profSources = [
+    ch.querySelector('race'), ch.querySelector('background'), ...classEls,
+    ...[...ch.children].filter(c => c.tagName.toLowerCase() === 'feat'),
+    ...allFeats.map(f => f.el)
+  ];
+  const profIds = new Set();
+  profSources.forEach(el => directProfs(el).forEach(id => profIds.add(id)));
+
+  const skills = SKILL_LIST.map(s => ({
+    ...s,
+    proficient: profIds.has(s.id),
+    mod: mods[s.ability] + (profIds.has(s.id) ? prof : 0)
+  }));
+
   // ── Armor Class calculation ──────────────────────────────────────
   // slot=5 = armadura, type=14+ac>0 = escudo. mod type=10 = bonus mágico de
   // CA y puede venir de CUALQUIER ítem equipado (armadura, accesorio, o
@@ -935,7 +991,7 @@ function parseFC5eXML(xml) {
     [...allFeats, ...itemFeats], totalLevel, mods, prof, weapons, spellEntries, spellDC, trackers
   );
 
-  return { name, hpMax, hpCur, cName, cLvl:totalLevel, classInfo, raceName, prof, mods, scores, trackers, abilities, spellDC, maxSpellLevel, ac:computedAC };
+  return { name, hpMax, hpCur, cName, cLvl:totalLevel, classInfo, raceName, prof, mods, scores, skills, trackers, abilities, spellDC, maxSpellLevel, ac:computedAC };
 }
 
 // ── Classify a single ability text ──────────────────
@@ -2694,7 +2750,23 @@ function renderAbilityScoresSection() {
       <div class="stat-mod">${sign}${mod}</div>
     </div>`;
   });
-  h += `</div></div>`;
+  h += `</div>`;
+
+  if (char.skills && char.skills.length) {
+    h += `<div class="skills-list">`;
+    [...char.skills].sort((a,b) => b.mod - a.mod).forEach(s => {
+      const sign = s.mod >= 0 ? '+' : '';
+      h += `<div class="skill-row ${s.proficient?'proficient':''}">
+        <div class="skill-prof-dot"></div>
+        <span class="skill-name">${esc(s.label)}</span>
+        <span class="skill-ability">${ABILITY_ABBR_ES[s.ability]}</span>
+        <span class="skill-mod">${sign}${s.mod}</span>
+      </div>`;
+    });
+    h += `</div>`;
+  }
+
+  h += `</div>`;
   return h;
 }
 
