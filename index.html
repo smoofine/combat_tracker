@@ -115,24 +115,23 @@ html,body{height:100%;background:var(--bg);color:var(--text);
 .trackers-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:6px;margin-bottom:10px}
 .tcard{background:var(--s1);border:1px solid var(--border);border-radius:var(--r-sm);padding:9px 10px;position:relative}
 
-/* Ability scores grid */
-.stats-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px}
-.stat-card{background:var(--s1);border:1px solid var(--border);border-radius:var(--r-sm);
-  padding:8px 6px;text-align:center}
+/* Ability scores, each with its grouped skills */
+.ability-blocks{display:flex;flex-direction:column;gap:6px;margin-bottom:10px}
+.ability-block{background:var(--s1);border:1px solid var(--border);border-radius:var(--r-sm);
+  padding:8px 10px}
+.ability-block-head{display:flex;align-items:baseline;gap:8px}
 .stat-abbr{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
-.stat-score{font-size:1.05rem;font-weight:700;margin:2px 0}
-.stat-mod{font-size:.78rem;color:var(--blue)}
+.stat-score{font-size:.85rem;color:var(--muted)}
+.stat-mod{font-size:1.15rem;font-weight:700;color:var(--blue);margin-left:auto}
 
-.skills-list{display:flex;flex-direction:column;gap:1px}
-.skill-row{display:flex;align-items:center;gap:8px;padding:5px 4px;font-size:.82rem;
-  border-bottom:1px solid var(--border)}
-.skill-row:last-child{border-bottom:none}
+.skills-list{display:flex;flex-direction:column;gap:1px;margin-top:6px;padding-top:6px;
+  border-top:1px solid var(--border)}
+.skill-row{display:flex;align-items:center;gap:8px;padding:3px 0;font-size:.82rem}
 .skill-prof-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;background:transparent;
   border:1px solid var(--hint)}
 .skill-row.proficient .skill-prof-dot{background:var(--green);border-color:var(--green)}
 .skill-row.proficient .skill-name{color:var(--text);font-weight:600}
 .skill-name{flex:1;color:var(--muted)}
-.skill-ability{font-size:.68rem;color:var(--hint);text-transform:uppercase}
 .skill-mod{font-weight:700;min-width:28px;text-align:right}
 .tcard-label{font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px;
   padding-right:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -2718,15 +2717,11 @@ function resetEncounterState() {
 // ═══════════════════════════════════════════════════
 //  PASSIVE / ALWAYS-ON TRAITS SECTION
 // ═══════════════════════════════════════════════════
-// ═══════════════════════════════════════════════════
 //  ABILITY SCORES SECTION
-//  Muestra las 6 puntuaciones de característica (ya con
-//  bonos raciales/ASI/ítems aplicados) y su modificador.
-//  NOTA: las competencias de habilidad (skills) no se
-//  incluyen — el XML de FC5e las codifica como IDs
-//  numéricos internos (<proficiency>105</proficiency>,
-//  etc.) sin una tabla de referencia verificable, así que
-//  mapearlas a ciegas podría mostrar información incorrecta.
+//  Una tarjeta por característica (score + modificador,
+//  ya con bonos raciales/ASI/ítems aplicados) con sus
+//  habilidades agrupadas debajo, ordenadas de mayor a
+//  menor modificador, punto verde si es competente.
 // ═══════════════════════════════════════════════════
 const ABILITY_ABBR_ES = { str:'FUE', dex:'DES', con:'CON', int:'INT', wis:'SAB', cha:'CAR' };
 function renderAbilityScoresSection() {
@@ -2739,35 +2734,39 @@ function renderAbilityScoresSection() {
   </div>`;
   if (collapsed) return h + `</div>`;
 
-  h += `<div class="stats-grid">`;
+  const skillsByAbility = {};
+  (char.skills || []).forEach(s => {
+    if (!skillsByAbility[s.ability]) skillsByAbility[s.ability] = [];
+    skillsByAbility[s.ability].push(s);
+  });
+
+  h += `<div class="ability-blocks">`;
   ['str','dex','con','int','wis','cha'].forEach((k, i) => {
     const score = char.scores[i];
     const mod = char.mods[k];
     const sign = mod >= 0 ? '+' : '';
-    h += `<div class="stat-card">
-      <div class="stat-abbr">${ABILITY_ABBR_ES[k]}</div>
-      <div class="stat-score">${score}</div>
-      <div class="stat-mod">${sign}${mod}</div>
-    </div>`;
+    h += `<div class="ability-block">
+      <div class="ability-block-head">
+        <span class="stat-abbr">${ABILITY_ABBR_ES[k]}</span>
+        <span class="stat-score">${score}</span>
+        <span class="stat-mod">${sign}${mod}</span>
+      </div>`;
+    const skills = (skillsByAbility[k] || []).sort((a,b) => b.mod - a.mod);
+    if (skills.length) {
+      h += `<div class="skills-list">` + skills.map(s => {
+        const ssign = s.mod >= 0 ? '+' : '';
+        return `<div class="skill-row ${s.proficient?'proficient':''}">
+          <div class="skill-prof-dot"></div>
+          <span class="skill-name">${esc(s.label)}</span>
+          <span class="skill-mod">${ssign}${s.mod}</span>
+        </div>`;
+      }).join('') + `</div>`;
+    }
+    h += `</div>`;
   });
   h += `</div>`;
 
-  if (char.skills && char.skills.length) {
-    h += `<div class="skills-list">`;
-    [...char.skills].sort((a,b) => b.mod - a.mod).forEach(s => {
-      const sign = s.mod >= 0 ? '+' : '';
-      h += `<div class="skill-row ${s.proficient?'proficient':''}">
-        <div class="skill-prof-dot"></div>
-        <span class="skill-name">${esc(s.label)}</span>
-        <span class="skill-ability">${ABILITY_ABBR_ES[s.ability]}</span>
-        <span class="skill-mod">${sign}${s.mod}</span>
-      </div>`;
-    });
-    h += `</div>`;
-  }
-
-  h += `</div>`;
-  return h;
+  return h + `</div>`;
 }
 
 function renderPassiveSection() {
