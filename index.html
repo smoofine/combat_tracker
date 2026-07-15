@@ -152,7 +152,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);
 .pool-row{display:flex;gap:4px;margin-top:5px;align-items:center}
 .pool-input{width:40px;background:var(--s2);border:1px solid var(--border2);color:var(--text);
   border-radius:6px;padding:3px 4px;font-size:.78rem;text-align:center;
-  -moz-appearance:textfield}
+  appearance:none;-moz-appearance:textfield}
 .pool-input::-webkit-outer-spin-button,.pool-input::-webkit-inner-spin-button{
   -webkit-appearance:none;margin:0}
 .pool-btn{background:var(--blue-bg);border:1px solid var(--blue-border);color:var(--blue);
@@ -305,7 +305,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);
 
 .pool-input{width:42px;font-size:.8rem;font-weight:700;text-align:center;
   background:var(--s2);border:1px solid var(--border2);border-radius:5px;
-  color:var(--blue);padding:2px 3px;-moz-appearance:textfield;cursor:text}
+  color:var(--blue);padding:2px 3px;appearance:none;-moz-appearance:textfield;cursor:text}
 .pool-input::-webkit-outer-spin-button,.pool-input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
 .pool-input:focus{outline:2px solid var(--blue);border-color:var(--blue)}
 
@@ -846,6 +846,36 @@ function parseFC5eXML(xml) {
     mod: mods[s.ability] + (profIds.has(s.id) ? prof : 0)
   }));
 
+  // ── Saving throw proficiencies ───────────────────────────────────
+  // FC5e codifica las competencias de salvación como <proficiency>N</proficiency>
+  // con N=0..5 en orden estándar D&D 5e: 0=FUE, 1=DES, 2=CON, 3=INT, 4=SAB, 5=CAR
+  const SAVE_LIST = [
+    { id:0, key:'str', label:'Fuerza', ability:'str' },
+    { id:1, key:'dex', label:'Destreza', ability:'dex' },
+    { id:2, key:'con', label:'Constitución', ability:'con' },
+    { id:3, key:'int', label:'Inteligencia', ability:'int' },
+    { id:4, key:'wis', label:'Sabiduría', ability:'wis' },
+    { id:5, key:'cha', label:'Carisma', ability:'cha' },
+  ];
+  const saveProfIds = new Set();
+  profSources.forEach(el => directProfs(el).forEach(id => {
+    if (id >= 0 && id <= 5) saveProfIds.add(id);
+  }));
+
+  // Detectar feat "Toque de Dorsaria" que da +1 al bonificador de competencia
+  let profBonus = prof;
+  const allFeatTexts = [...ch.querySelectorAll('feat')].map(f => $(f, 'name')).join(' ').toLowerCase();
+  const hasDorsaria = allFeatTexts.includes('toque de dorsaria') || allFeatTexts.includes('dorsaria');
+  if (hasDorsaria) {
+    profBonus += 1;
+  }
+
+  const saves = SAVE_LIST.map(s => ({
+    ...s,
+    proficient: saveProfIds.has(s.id),
+    mod: mods[s.ability] + (saveProfIds.has(s.id) ? profBonus : 0)
+  }));
+
   // ── Armor Class calculation ──────────────────────────────────────
   // slot=5 = armadura, type=14+ac>0 = escudo. mod type=10 = bonus mágico de
   // CA y puede venir de CUALQUIER ítem equipado (armadura, accesorio, o
@@ -990,7 +1020,7 @@ function parseFC5eXML(xml) {
     [...allFeats, ...itemFeats], totalLevel, mods, prof, weapons, spellEntries, spellDC, trackers
   );
 
-  return { name, hpMax, hpCur, cName, cLvl:totalLevel, classInfo, raceName, prof, mods, scores, skills, trackers, abilities, spellDC, maxSpellLevel, ac:computedAC };
+  return { name, hpMax, hpCur, cName, cLvl:totalLevel, classInfo, raceName, prof, profBonus, mods, scores, skills, saves, trackers, abilities, spellDC, maxSpellLevel, ac:computedAC };
 }
 
 // ── Classify a single ability text ──────────────────
@@ -2740,6 +2770,12 @@ function renderAbilityScoresSection() {
     skillsByAbility[s.ability].push(s);
   });
 
+  // Obtener salvaciones por característica
+  const savesByAbility = {};
+  (char.saves || []).forEach(s => {
+    if (!savesByAbility[s.ability]) savesByAbility[s.ability] = s;
+  });
+
   h += `<div class="ability-blocks">`;
   ['str','dex','con','int','wis','cha'].forEach((k, i) => {
     const score = char.scores[i];
@@ -2761,6 +2797,22 @@ function renderAbilityScoresSection() {
           <span class="skill-mod">${ssign}${s.mod}</span>
         </div>`;
       }).join('') + `</div>`;
+    }
+    // Agregar salvación al final
+    const save = savesByAbility[k];
+    if (save) {
+      // Brazos del Yo Astral: cuando están activos, salvación de Fuerza usa modificador de Sabiduría
+      let saveMod = save.mod;
+      if (k === 'str' && hasEffect('astral_arms_active')) {
+        saveMod = char.mods.wis + (save.proficient ? (char.profBonus || char.prof) : 0);
+      }
+      const ssign = saveMod >= 0 ? '+' : '';
+      h += `<div class="skills-list" style="border-top:1px solid var(--border2);margin-top:4px;padding-top:4px">` +
+        `<div class="skill-row ${save.proficient?'proficient':''}">
+          <div class="skill-prof-dot"></div>
+          <span class="skill-name" style="font-style:italic;color:var(--muted)">Salvación de ${esc(save.label)}</span>
+          <span class="skill-mod">${ssign}${saveMod}</span>
+        </div>` + `</div>`;
     }
     h += `</div>`;
   });
