@@ -2790,11 +2790,19 @@ function renderAbilityScoresSection() {
     const skills = (skillsByAbility[k] || []).sort((a,b) => b.mod - a.mod);
     if (skills.length) {
       h += `<div class="skills-list">` + skills.map(s => {
-        const ssign = s.mod >= 0 ? '+' : '';
+        // Brazos del Yo Astral: habilidades de Fuerza usan modificador de Sabiduría
+        let skillMod = s.mod;
+        let modSource = '';
+        if (k === 'str' && hasEffect('astral_arms_active')) {
+          skillMod = char.mods.wis + (s.proficient ? (char.profBonus || char.prof) : 0);
+          modSource = ' <span style="color:var(--blue);font-size:.7rem">(SAB)</span>';
+        }
+        const ssign = skillMod >= 0 ? '+' : '';
+        const modStyle = k === 'str' && hasEffect('astral_arms_active') ? 'color:var(--blue);font-weight:700' : '';
         return `<div class="skill-row ${s.proficient?'proficient':''}">
           <div class="skill-prof-dot"></div>
-          <span class="skill-name">${esc(s.label)}</span>
-          <span class="skill-mod">${ssign}${s.mod}</span>
+          <span class="skill-name">${esc(s.label)}${modSource}</span>
+          <span class="skill-mod" style="${modStyle}">${ssign}${skillMod}</span>
         </div>`;
       }).join('') + `</div>`;
     }
@@ -2803,15 +2811,18 @@ function renderAbilityScoresSection() {
     if (save) {
       // Brazos del Yo Astral: cuando están activos, salvación de Fuerza usa modificador de Sabiduría
       let saveMod = save.mod;
+      let modSource = '';
       if (k === 'str' && hasEffect('astral_arms_active')) {
         saveMod = char.mods.wis + (save.proficient ? (char.profBonus || char.prof) : 0);
+        modSource = ' <span style="color:var(--blue);font-size:.7rem">(SAB)</span>';
       }
       const ssign = saveMod >= 0 ? '+' : '';
+      const modStyle = k === 'str' && hasEffect('astral_arms_active') ? 'color:var(--blue);font-weight:700' : '';
       h += `<div class="skills-list" style="border-top:1px solid var(--border2);margin-top:4px;padding-top:4px">` +
         `<div class="skill-row ${save.proficient?'proficient':''}">
           <div class="skill-prof-dot"></div>
-          <span class="skill-name" style="font-style:italic;color:var(--muted)">Salvación de ${esc(save.label)}</span>
-          <span class="skill-mod">${ssign}${saveMod}</span>
+          <span class="skill-name" style="font-style:italic;color:var(--muted)">Salvación de ${esc(save.label)}${modSource}</span>
+          <span class="skill-mod" style="${modStyle}">${ssign}${saveMod}</span>
         </div>` + `</div>`;
     }
     h += `</div>`;
