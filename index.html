@@ -602,9 +602,10 @@ const AC_BONUS_MENU_RE = /choose one of the following|select one of the followin
 // (esbirro de acero, familiar, criatura invocada, etc.).
 const AC_BONUS_OTHER_CREATURE_RE = /steel defender|familiar|companion|homunculus|spectral|summoned creature|the creature|their (?:AC|Armor Class)|its (?:AC|Armor Class)/i;
 
-function flatFeatACBonus(feats) {
+function flatFeatACBonus(feats, skipFeats) {
   let total = 0;
   feats.forEach(f => {
+    if (skipFeats && skipFeats.has(f)) return; // ya contabilizado vía <mod type=10> numérico — ver scanGenericMods
     const text = f.text || '';
     if (AC_BONUS_MENU_RE.test(text)) return;
     const sentences = text.split(/(?<=[.\n])/).filter(s => s.trim().length > 0);
@@ -647,6 +648,20 @@ function parseFC5eXML(xml) {
   const cName = classInfo.map(c => `${c.name} ${c.level}`).join(' / ');
   const prof  = Math.ceil(totalLevel / 4) + 1;
   const raceName = $(ch.querySelector('race'), 'name');
+
+  // ── Velocidad base ──────────────────────────────────────────────
+  // FC5e rara vez exporta <speed> como hijo directo de <race> (solo 1 de
+  // los 6 personajes de prueba lo trae) — cuando falta, se usa 30 pies
+  // por defecto, con la excepción conocida de enanos/gnomos/medianos (25
+  // pies por regla base de 5e), detectada por el nombre de la raza. Esto
+  // es una heurística de reglas de D&D (no un dato leído del XML) — si no
+  // coincide con la raza real, el bono de tipo=13 ("Velocidad", ver
+  // scanGenericMods) sí se lee del XML de forma fiable y se suma encima.
+  const raceSpeedEl = [...(ch.querySelector('race')?.children || [])]
+    .find(c => c.tagName.toLowerCase() === 'speed');
+  const explicitSpeed = raceSpeedEl ? parseInt(raceSpeedEl.textContent) || null : null;
+  const SMALL_RACE_RE = /dwarf|enano|gnome|gnomo|halfling|mediano/i;
+  const baseSpeed = explicitSpeed ?? (SMALL_RACE_RE.test(raceName) ? 25 : 30);
 
   // ── Trackers (per class, merged) ───────────────────
   let trackers = [];
@@ -797,6 +812,119 @@ function parseFC5eXML(xml) {
   [...ch.children].filter(c => c.tagName.toLowerCase() === 'feat').forEach(addAbilityBonus); // dotes a nivel de personaje
   allItems.forEach(addAbilityBonus);
 
+  // ── Modifiers genéricos de FC5e (bonos más allá de puntuación de
+  // característica) — ver CONTEXTO_PROYECTO.md §2.8 para el mapeo
+  // empírico completo verificado contra los 6 personajes de prueba.
+  // <category> ausente/"0" = "Bonus" (subtipo numérico en <type>);
+  // 3 = Tirada de Salvación (<type>=0-5, ábaco FUE..CAR); 4 = Habilidad
+  // (<type>=0-17, +100 = id absoluto de SKILL_LIST). <category>=1 ya se
+  // trató arriba (puntuación de característica).
+  // <category>=2 ("Modificador de Característica") apareció una sola vez
+  // en los 6 personajes de prueba (Brazos del Yo Astral de Rhyo) y
+  // describía un mecanismo CONDICIONAL — sustituir SAB por FUE mientras
+  // ese efecto está activo — no un bono permanente. Sumarlo a ciegas
+  // corrompería puntuaciones ya validadas (ver tabla §4), así que NO se
+  // auto-aplica; solo queda registrado para revisión manual si aparece.
+  // Subtipos de "Bonus" (categoría 0) confirmados empíricamente: 1=ataques
+  // con arma, 2=daño con arma, 3=ataques cuerpo a cuerpo, 4=daño cuerpo a
+  // cuerpo, 5=ataques a distancia, 6=daño a distancia, 7=CD de conjuros,
+  // 8=ataque de conjuros, 10=CA, 13=velocidad. El resto (0, 9, 11, 12, 14,
+  // 16, 17...) no tiene un caso confirmado en los 6 personajes de prueba
+  // — se ignoran y se registran en consola en vez de adivinar su efecto
+  // (mismo criterio metodológico que el resto del parser: no asumir sin
+  // verificar). type=15 (puntos de golpe) SÍ está confirmado (Draconic
+  // Resilience de Dorym) pero NO se suma a hpMax: <hpMax> es un campo ya
+  // computado por FC5e (a diferencia de <abilities>, que exporta valores
+  // base) y no hay forma de verificar si ya lo incluye sin una cifra de
+  // referencia confirmada por el usuario — se registra para revisión en
+  // vez de arriesgar un doble conteo silencioso sobre un dato ya confiable.
+  //
+  // Los tipos 1/2/3/4/5/6/7/8/10 en ÍTEMS ya se leen (o deberían leerse)
+  // por rutas separadas más abajo: CA de armadura/escudo/accesorio, CD y
+  // ataque de conjuros globales, y — sobre todo — el bono propio de CADA
+  // arma dentro de buildAbilities (p.ej. "Moon Sickle +3" o "Staff of the
+  // Woodlands" solo dan su bono a ataques hechos CON ESA arma, nunca a
+  // todas las armas del personaje). Aquí se excluyen los ítems para esos
+  // 9 tipos y solo se agregan los de raza/clase/trasfondo/dotes (bonos
+  // realmente de personaje, como un Fighting Style), que antes no se
+  // leían en absoluto. Solo 13 (velocidad, p.ej. un objeto tipo "Botas de
+  // Velocidad") no tiene ruta propia y sí se agrega también desde ítems.
+  const BONUS_TYPE_KEYS = {
+    1:'weaponAtk', 2:'weaponDmg', 3:'meleeAtk', 4:'meleeDmg',
+    5:'rangedAtk', 6:'rangedDmg', 7:'spellDcBonus', 8:'spellAtkBonus',
+    10:'acBonus', 13:'speedBonus'
+  };
+  const ITEM_HANDLED_TYPES = new Set([1, 2, 3, 4, 5, 6, 7, 8, 10]);
+  const bonuses = { weaponAtk:0, weaponDmg:0, meleeAtk:0, meleeDmg:0, rangedAtk:0, rangedDmg:0,
+                     spellDcBonus:0, spellAtkBonus:0, acBonus:0, speedBonus:0 };
+  const acModFeats = new Set();  // feats con CA vía <mod> numérico — flatFeatACBonus() los excluye para no duplicar
+  const hpModsFound = [];        // type=15 detectados pero NO aplicados (ver nota arriba)
+  const saveMods = {};           // idx 0-5 -> { flat, profGrant }
+  const skillMods = {};          // id 100-117 -> { flat, profGrant }
+  const unknownMods = [];        // category/type sin mapeo confirmado — solo diagnóstico en consola
+
+  function scanGenericMods(el, sourceLabel, isItem, featRef) {
+    directMods(el).forEach(md => {
+      const catRaw = $(md, 'category');
+      const type = parseInt($(md, 'type')) || 0;
+      const hasValue = $(md, 'value') !== '';
+      const val = hasValue ? (parseInt($(md, 'value')) || 0) : null;
+
+      if (catRaw === '' || catRaw === '0') {
+        if (val === null) return; // "Bonus" sin valor = placeholder/flag del ítem, no un bono real (ver Espina/Pico de Guerra)
+        if (isItem && ITEM_HANDLED_TYPES.has(type)) return; // ya cubierto por otra ruta
+        if (type === 15) { hpModsFound.push({ value: val, source: sourceLabel }); return; }
+        const key = BONUS_TYPE_KEYS[type];
+        if (key) {
+          bonuses[key] += val;
+          if (type === 10 && featRef) acModFeats.add(featRef);
+        } else {
+          unknownMods.push({ category:'bonus', type, value:val, source:sourceLabel });
+        }
+      } else if (catRaw === '3') {
+        if (type >= 0 && type <= 5) {
+          saveMods[type] = saveMods[type] || { flat:0, profGrant:false };
+          if (val === null) saveMods[type].profGrant = true; else saveMods[type].flat += val;
+        }
+      } else if (catRaw === '4') {
+        if (type >= 0 && type <= 17) {
+          const skillId = 100 + type;
+          skillMods[skillId] = skillMods[skillId] || { flat:0, profGrant:false };
+          if (val === null) skillMods[skillId].profGrant = true; else skillMods[skillId].flat += val;
+        }
+      } else if (catRaw === '2') {
+        unknownMods.push({ category:'ability-modifier (no aplicado, ver nota)', type, value:val, source:sourceLabel });
+      } else if (catRaw !== '1') {
+        unknownMods.push({ category:catRaw, type, value:val, source:sourceLabel });
+      }
+    });
+  }
+
+  scanGenericMods(ch.querySelector('race'), 'raza');
+  scanGenericMods(ch.querySelector('background'), 'trasfondo');
+  classEls.forEach(c => scanGenericMods(c, `clase (${$(c,'name')})`));
+  allFeats.forEach(f => scanGenericMods(f.el, f.name, false, f));
+  [...ch.children].filter(c => c.tagName.toLowerCase() === 'feat')
+    .forEach(f => scanGenericMods(f, $(f,'name') || 'dote de personaje'));
+  allItems.forEach(it => scanGenericMods(it, $(it,'name') || 'ítem', true));
+
+  if (unknownMods.length) {
+    console.warn(`[FC5e] Modifiers sin mapeo confirmado en "${name}" — revisar empíricamente:`, unknownMods);
+  }
+  if (hpModsFound.length) {
+    console.info(`[FC5e] Bonos de PG (type=15) detectados en "${name}" pero no sumados a hpMax (ver nota en el código) — verificar manualmente:`, hpModsFound);
+  }
+
+  // ── Movimiento disponible en el turno ────────────────────────────
+  // Se expone como un tracker más (misma UI que "Imponer las Manos"),
+  // para poder ir descontando pies gastados durante el turno. Se
+  // reabastece a `speed` en cada turno nuevo — ver resetTurnState().
+  const speed = baseSpeed + bonuses.speedBonus;
+  trackers.push({
+    id:'movement', label:'Movimiento', type:1, resetType:0,
+    max: speed, current: speed, isDice:false, diceFmt:null, isPool:true
+  });
+
   const scores = $(ch, 'abilities').replace(/,$/, '').split(',').map(Number).map((s, i) => s + abilityBonus[i]);
   const [str, dex, con, int_, wis, cha] = scores;
   const m = s => Math.floor((s - 10) / 2);
@@ -840,11 +968,16 @@ function parseFC5eXML(xml) {
   const profIds = new Set();
   profSources.forEach(el => directProfs(el).forEach(id => profIds.add(id)));
 
-  const skills = SKILL_LIST.map(s => ({
-    ...s,
-    proficient: profIds.has(s.id),
-    mod: mods[s.ability] + (profIds.has(s.id) ? prof : 0)
-  }));
+  const skills = SKILL_LIST.map(s => {
+    const sm = skillMods[s.id];
+    const proficient = profIds.has(s.id) || !!(sm && sm.profGrant);
+    const flatBonus = sm ? sm.flat : 0;
+    return {
+      ...s,
+      proficient,
+      mod: mods[s.ability] + (proficient ? prof : 0) + flatBonus
+    };
+  });
 
   // ── Saving throw proficiencies ───────────────────────────────────
   // FC5e codifica las competencias de salvación como <proficiency>N</proficiency>
@@ -861,6 +994,7 @@ function parseFC5eXML(xml) {
   profSources.forEach(el => directProfs(el).forEach(id => {
     if (id >= 0 && id <= 5) saveProfIds.add(id);
   }));
+  Object.entries(saveMods).forEach(([idx, sm]) => { if (sm.profGrant) saveProfIds.add(parseInt(idx)); });
 
   // Detectar feat "Toque de Dorsaria" que da +1 al bonificador de competencia
   let profBonus = prof;
@@ -870,11 +1004,16 @@ function parseFC5eXML(xml) {
     profBonus += 1;
   }
 
-  const saves = SAVE_LIST.map(s => ({
-    ...s,
-    proficient: saveProfIds.has(s.id),
-    mod: mods[s.ability] + (saveProfIds.has(s.id) ? profBonus : 0)
-  }));
+  const saves = SAVE_LIST.map(s => {
+    const sm = saveMods[s.id];
+    const proficient = saveProfIds.has(s.id);
+    const flatBonus = sm ? sm.flat : 0;
+    return {
+      ...s,
+      proficient,
+      mod: mods[s.ability] + (proficient ? profBonus : 0) + flatBonus
+    };
+  });
 
   // ── Armor Class calculation ──────────────────────────────────────
   // slot=5 = armadura, type=14+ac>0 = escudo. mod type=10 = bonus mágico de
@@ -926,7 +1065,7 @@ function parseFC5eXML(xml) {
     // hay varias disponibles, se usa la que dé más CA.
     computedAC = Math.max(10 + dexMod, ...parseUnarmoredACFormulas(allFeats, mods));
   }
-  computedAC += shieldAC + flatItemACBonus + flatFeatACBonus(allFeats);
+  computedAC += shieldAC + flatItemACBonus + flatFeatACBonus(allFeats, acModFeats) + bonuses.acBonus;
 
   allItems.forEach(it => {
     const itName = $(it,'name'), itText = $(it,'text');
@@ -956,6 +1095,11 @@ function parseFC5eXML(xml) {
       itemFeats.push({ name:itName, text:itText, source:'item' });
     }
   });
+
+  // Bonos de CD/ataque de conjuro de raza/clase/trasfondo/dotes (los de
+  // ítems ya se sumaron arriba) — ver scanGenericMods.
+  spellDcBonus  += bonuses.spellDcBonus;
+  spellAtkBonus += bonuses.spellAtkBonus;
 
   // ── Spells: direct <spell> children of each <class> ─────────────
   const spellEntries = [];
@@ -1017,10 +1161,10 @@ function parseFC5eXML(xml) {
   // Trackers are now complete (native + pool-synthesized); pass them to
   // buildAbilities so ownPool detection works correctly.
   const abilities = buildAbilities(
-    [...allFeats, ...itemFeats], totalLevel, mods, prof, weapons, spellEntries, spellDC, trackers
+    [...allFeats, ...itemFeats], totalLevel, mods, prof, weapons, spellEntries, spellDC, trackers, bonuses
   );
 
-  return { name, hpMax, hpCur, cName, cLvl:totalLevel, classInfo, raceName, prof, profBonus, mods, scores, skills, saves, trackers, abilities, spellDC, maxSpellLevel, ac:computedAC };
+  return { name, hpMax, hpCur, cName, cLvl:totalLevel, classInfo, raceName, prof, profBonus, mods, scores, skills, saves, trackers, abilities, spellDC, maxSpellLevel, ac:computedAC, speed, bonuses };
 }
 
 // ── Classify a single ability text ──────────────────
@@ -1695,18 +1839,26 @@ const SKIP_NAMES_EXACT = /^(canalizar divinidad|channel divinity|artificer speci
 
 const SKIP_NAMES = /^(description|descripci[oó]n|characteristics|caracter[ií]sticas|suggested characteristics|specialty|talent|starting\s|multiclass|proficiency|equipment|languages|idiomas|age|size|speed|ability score improvement|style$|instructor$|well-rounded|trained for|creating a|heraldic|xanathar|artificers? in many worlds|creating an artificer|tool proficiency|tools of the trade|the right tool|spellcasting$)/i;
 
-function buildAbilities(entries, level, mods, prof, weapons, spellEntries, spellDC, trackers) {
+function buildAbilities(entries, level, mods, prof, weapons, spellEntries, spellDC, trackers, combatBonuses) {
   const out = { action:[], bonus:[], reaction:[], utility:[], trigger:[], passive:[] };
+  // Bonos de combate agregados por FC5e Modifiers (Fighting Styles, dotes,
+  // rasgos raciales, etc. — ver scanGenericMods en parseFC5eXML). El
+  // ataque desarmado cuenta como cuerpo a cuerpo; las armas suman además
+  // su bono específico (arma genérico + cuerpo a cuerpo O a distancia).
+  const cb = { weaponAtk:0, weaponDmg:0, meleeAtk:0, meleeDmg:0, rangedAtk:0, rangedDmg:0, ...combatBonuses };
 
   const attacks = level >= 11 ? 3 : level >= 5 ? 2 : 1;
 
   // ── Base unarmed attack ──────────────────────────
   const abMod   = Math.max(mods.str, mods.dex);
-  const unarmedB = abMod + prof;
-  const unarmedSign = abMod >= 0 ? '+' : '';
+  const unarmedAtkBonus = cb.weaponAtk + cb.meleeAtk;
+  const unarmedDmgBonus = cb.weaponDmg + cb.meleeDmg;
+  const unarmedB = abMod + prof + unarmedAtkBonus;
+  const unarmedTotalMod = abMod + unarmedDmgBonus;
+  const unarmedSign = unarmedTotalMod >= 0 ? '+' : '';
   const unarmedDie = level >= 5 ? 8 : 4;
-  const unarmedD = `1d${unarmedDie}${unarmedSign}${abMod}`;
-  const unarmedPerHit = (unarmedDie+1)/2 + abMod;
+  const unarmedD = `1d${unarmedDie}${unarmedSign}${unarmedTotalMod}`;
+  const unarmedPerHit = (unarmedDie+1)/2 + unarmedTotalMod;
   const unarmedObj = {
     id:'__attack', name:'Atacar (sin armas)',
     desc:`${attacks} ${attacks>1?'ataques':'ataque'} · +${unarmedB} al impacto · ${unarmedD}`,
@@ -1724,12 +1876,24 @@ function buildAbilities(entries, level, mods, prof, weapons, spellEntries, spell
 
     let modAtk = 0, modDmg = 0, hasMods = false;
     (w.mods || []).forEach(md => {
-      if (md.type === 1) {           // Weapon Attacks (+) modifier
+      if (md.type === 1) {           // Weapon Attacks (+) modifier — genérico, toda arma
         hasMods = true;
         const v = md.value != null ? md.value : prof; // "no value" = + Proficiency Bonus
         modAtk += v;
         if (md.value == null) modDmg += v; // extra prof-style mods also boost damage
-      } else if (md.type === 2) {    // Weapon Damage (+) modifier
+      } else if (md.type === 2) {    // Weapon Damage (+) modifier — genérico, toda arma
+        hasMods = true;
+        modDmg += (md.value != null ? md.value : prof);
+      } else if (md.type === 3 && !isRanged) {  // Melee Attacks (+) — p.ej. Staff of the Woodlands
+        hasMods = true;
+        modAtk += (md.value != null ? md.value : prof);
+      } else if (md.type === 4 && !isRanged) {  // Melee Damage (+)
+        hasMods = true;
+        modDmg += (md.value != null ? md.value : prof);
+      } else if (md.type === 5 && isRanged) {   // Ranged Attacks (+)
+        hasMods = true;
+        modAtk += (md.value != null ? md.value : prof);
+      } else if (md.type === 6 && isRanged) {   // Ranged Damage (+)
         hasMods = true;
         modDmg += (md.value != null ? md.value : prof);
       }
@@ -1742,8 +1906,15 @@ function buildAbilities(entries, level, mods, prof, weapons, spellEntries, spell
       modAtk = magicB; modDmg = magicB;
     }
 
-    const atkB    = abMod + prof + modAtk;
-    const dmgB    = abMod + modDmg;
+    // Bonos de combate a nivel de personaje (Fighting Styles, dotes,
+    // rasgos raciales, etc.). El bono mágico del arma en sí (arriba) ya
+    // cubre su propio "+N", así que esto no lo duplica — es un bono
+    // adicional que aplica a TODAS las armas del tipo correspondiente.
+    const rangeAtkBonus = cb.weaponAtk + (isRanged ? cb.rangedAtk : cb.meleeAtk);
+    const rangeDmgBonus = cb.weaponDmg + (isRanged ? cb.rangedDmg : cb.meleeDmg);
+
+    const atkB    = abMod + prof + modAtk + rangeAtkBonus;
+    const dmgB    = abMod + modDmg + rangeDmgBonus;
     const dmgSign = dmgB >= 0 ? '+' : '';
     let dmgStr = `${w.damage1H}${dmgSign}${dmgB}`;
     if (w.damage2H) dmgStr += ` (2 manos: ${w.damage2H}${dmgSign}${dmgB})`;
@@ -2827,6 +2998,33 @@ function renderAbilityScoresSection() {
     }
     h += `</div>`;
   });
+
+  // Bonos de combate genéricos detectados (Fighting Styles, dotes, rasgos
+  // raciales) que no encajan en el grid de característica/habilidad/
+  // salvación de arriba — solo se muestran si hay alguno distinto de 0.
+  const cb = char.bonuses || {};
+  const cbLines = [
+    ['Ataques con arma',        cb.weaponAtk],
+    ['Daño con arma',           cb.weaponDmg],
+    ['Ataques cuerpo a cuerpo', cb.meleeAtk],
+    ['Daño cuerpo a cuerpo',    cb.meleeDmg],
+    ['Ataques a distancia',     cb.rangedAtk],
+    ['Daño a distancia',        cb.rangedDmg],
+  ].filter(([, v]) => v);
+  if (cbLines.length) {
+    h += `<div class="ability-block">
+      <div class="ability-block-head"><span class="stat-abbr">Bonos</span></div>
+      <div class="skills-list">` + cbLines.map(([label, v]) => {
+        const sign = v >= 0 ? '+' : '';
+        return `<div class="skill-row">
+          <div class="skill-prof-dot" style="visibility:hidden"></div>
+          <span class="skill-name">${esc(label)}</span>
+          <span class="skill-mod">${sign}${v}</span>
+        </div>`;
+      }).join('') + `</div>
+    </div>`;
+  }
+
   h += `</div>`;
 
   return h + `</div>`;
@@ -3060,7 +3258,7 @@ function useAbPool(id, flag, poolId, amount) {
   G.lastSnapshot = { flag, poolId, amount, trackers: { ...G.trackers } };
   const t = char.trackers.find(t => t.id === poolId);
   if (t) G.trackers[poolId] = Math.max(0, (G.trackers[poolId] ?? t.max) - amount);
-  autoActivateConcentration(id);
+  autoActivateEffect(id);
   save(); render();
 }
 
@@ -3121,14 +3319,19 @@ function toggleDesc(id) {
 //  apply* mutate state only (no save/render) so multi-step
 //  combos can apply several effects then render once.
 // ═══════════════════════════════════════════════════
-// Auto-activa el efecto de concentración de una habilidad al usarla (si
-// tiene effectKey y requiere concentración) — compartido por applyAbility
-// y useAbPool para que también funcione con habilidades de pool propio.
-function autoActivateConcentration(id) {
+// Auto-activa el efecto asociado a una habilidad al usarla (Rabia, Brazos
+// del Yo Astral, Bendición, etc.) — usar la acción/adicional/reacción y
+// activar el efecto son el mismo evento para CUALQUIER habilidad con
+// effectKey, ya no solo las de concentración. El botón manual "⚡ Activar"
+// sigue disponible en el render para reactivar un efecto que se haya
+// desactivado sin tener que deshacer y volver a gastar la acción.
+// Compartida por applyAbility y useAbPool para que también funcione con
+// habilidades de pool propio (p.ej. Imponer las Manos).
+function autoActivateEffect(id) {
   const allAbs = [...(char.abilities.action||[]), ...(char.abilities.bonus||[]),
                   ...(char.abilities.reaction||[]), ...(char.abilities.utility||[])];
   const ab = allAbs.find(a => a.id === id);
-  if (ab?.effectKey && ab.isConcentration) {
+  if (ab?.effectKey) {
     const appliesTo = (ab.selfOrAlly && G.castTarget?.[id]) ? G.castTarget[id]
       : (EFFECT_CATALOG[ab.effectKey]?.appliesTo || 'self');
     activateEffect(id, ab.effectKey, appliesTo);
@@ -3143,7 +3346,7 @@ function applyAbility(id, flag, pc, once, spellLevel, resKey, slotPrefix) {
   if (pc > 0) spendResource(pc, resKey);
   if (spellLevel > 0) spendSpellSlot(spellLevel, slotPrefix);
   if (once) G.oncePerTurn[id] = true;
-  autoActivateConcentration(id);
+  autoActivateEffect(id);
 }
 function applySmite(level) { spendSpellSlot(level); }
 
@@ -3374,8 +3577,8 @@ function calcApply(mode) {
 
 // Reinicia el estado de turno: acción/acción adicional frescas, reacción
 // bloqueada de nuevo (hasta el próximo "Fin de turno"), contadores de "una
-// vez por turno" limpios. Se usa al empezar un turno nuevo (avanzar de
-// ronda) y en los descansos.
+// vez por turno" limpios, movimiento disponible de vuelta al máximo. Se
+// usa al empezar un turno nuevo (avanzar de ronda) y en los descansos.
 function resetTurnState() {
   G.actionUsed = G.bonusUsed = G.reactionUsed = false;
   G.reactionAvailable = false;
@@ -3383,6 +3586,8 @@ function resetTurnState() {
   G.oncePerTurn = {};
   G.comboUsed = {};
   G.lastSnapshot = null;
+  const moveT = char.trackers.find(t => t.id === 'movement');
+  if (moveT) G.trackers.movement = moveT.max;
 }
 
 function addRound(d) {
