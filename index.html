@@ -687,7 +687,7 @@ function parseFC5eXML(xml, equipOverrides) {
   }));
   const totalLevel = classInfo.reduce((s,c) => s + c.level, 0) || 1;
   const cName = classInfo.map(c => `${c.name} ${c.level}`).join(' / ');
-  const prof  = Math.ceil(totalLevel / 4) + 1;
+  let prof = Math.ceil(totalLevel / 4) + 1; // ajustado más abajo con bonos type=0 (ver scanGenericMods)
   const raceName = $(ch.querySelector('race'), 'name');
 
   // ── Velocidad base ──────────────────────────────────────────────
@@ -932,24 +932,32 @@ function parseFC5eXML(xml, equipOverrides) {
   // (<type>=0-17, +100 = id absoluto de SKILL_LIST). <category>=1 ya se
   // trató arriba (puntuación de característica).
   // <category>=2 ("Modificador de Característica") apareció una sola vez
-  // en los 6 personajes de prueba (Brazos del Yo Astral de Rhyo) y
-  // describía un mecanismo CONDICIONAL — sustituir SAB por FUE mientras
-  // ese efecto está activo — no un bono permanente. Sumarlo a ciegas
-  // corrompería puntuaciones ya validadas (ver tabla §4), así que NO se
-  // auto-aplica; solo queda registrado para revisión manual si aparece.
-  // Subtipos de "Bonus" (categoría 0) confirmados empíricamente: 1=ataques
-  // con arma, 2=daño con arma, 3=ataques cuerpo a cuerpo, 4=daño cuerpo a
-  // cuerpo, 5=ataques a distancia, 6=daño a distancia, 7=CD de conjuros,
-  // 8=ataque de conjuros, 10=CA, 13=velocidad. El resto (0, 9, 11, 12, 14,
-  // 16, 17...) no tiene un caso confirmado en los 6 personajes de prueba
-  // — se ignoran y se registran en consola en vez de adivinar su efecto
-  // (mismo criterio metodológico que el resto del parser: no asumir sin
-  // verificar). type=15 (puntos de golpe) SÍ está confirmado (Draconic
-  // Resilience de Dorym) pero NO se suma a hpMax: <hpMax> es un campo ya
-  // computado por FC5e (a diferencia de <abilities>, que exporta valores
-  // base) y no hay forma de verificar si ya lo incluye sin una cifra de
-  // referencia confirmada por el usuario — se registra para revisión en
-  // vez de arriesgar un doble conteo silencioso sobre un dato ya confiable.
+  // en los 6 personajes de prueba (Brazos del Yo Astral de Rhyo, en una
+  // versión anterior del XML) y describía un mecanismo CONDICIONAL —
+  // sustituir SAB por FUE mientras ese efecto está activo — no un bono
+  // permanente. Sumarlo a ciegas corrompería puntuaciones ya validadas
+  // (ver tabla §4), así que NO se auto-aplica; solo queda registrado para
+  // revisión manual si aparece. Esta es la decisión final, no un
+  // pendiente: la sustitución condicional real de Brazos del Yo Astral ya
+  // está cubierta por el sistema de efectos (`astral_arms_active`, ver
+  // §3.3), que sabe CUÁNDO aplica la condición — algo que un `<mod>`
+  // category=2 sumado ciegamente nunca podría saber.
+  // Subtipos de "Bonus" (categoría 0): son exactamente 16, <type>=0-15,
+  // confirmado por el propio menú de FC5e (ver CONTEXTO_PROYECTO.md §2.8
+  // para la lista completa con nivel de confianza de cada uno — varios
+  // vía dato real, un par por posición en el menú sin caso real que lo
+  // desambigüe todavía). type=16/17 NO son de esta categoría — son
+  // `category=4` (Habilidad), donde 0-17 identifica CUÁL habilidad, no
+  // un subtipo de bono (ver arriba). type=15 (puntos de golpe) SÍ está
+  // confirmado (Draconic Resilience de Dorym) pero NUNCA se suma a
+  // hpMax — decisión confirmada empíricamente (no solo por cautela):
+  // se probó agregando un ítem con `mod type=15 value=1` a Rhyo y
+  // `<hpMax>` exportado por FC5e NO cambió (se quedó en 77) — o sea que
+  // FC5e no recalcula `<hpMax>` en base a los mods del personaje, es un
+  // campo que el usuario fija a mano en la app. Sumar type=15 nosotros
+  // encima de un `<hpMax>` que ya es la cifra final duplicaría el bono
+  // apenas el jugador lo reflejara en su hoja. Se sigue registrando en
+  // consola solo como diagnóstico informativo.
   //
   // Los tipos 1/2/3/4/5/6/7/8/10 en ÍTEMS ya se leen (o deberían leerse)
   // por rutas separadas más abajo: CA de armadura/escudo/accesorio, CD y
@@ -963,7 +971,7 @@ function parseFC5eXML(xml, equipOverrides) {
   // Velocidad") no tiene ruta propia y sí se agrega también desde ítems.
   const BONUS_TYPE_KEYS = {
     1:'weaponAtk', 2:'weaponDmg', 3:'meleeAtk', 4:'meleeDmg',
-    5:'rangedAtk', 6:'rangedDmg', 7:'spellDcBonus', 8:'spellAtkBonus',
+    5:'rangedAtk', 6:'rangedDmg', 7:'spellAtkBonus', 8:'spellDcBonus',
     10:'acBonus', 13:'speedBonus'
   };
   const ITEM_HANDLED_TYPES = new Set([1, 2, 3, 4, 5, 6, 7, 8, 10]);
@@ -971,6 +979,7 @@ function parseFC5eXML(xml, equipOverrides) {
                      spellDcBonus:0, spellAtkBonus:0, acBonus:0, speedBonus:0 };
   const acModFeats = new Set();  // feats con CA vía <mod> numérico — flatFeatACBonus() los excluye para no duplicar
   const hpModsFound = [];        // type=15 detectados pero NO aplicados (ver nota arriba)
+  let profBonusFlat = 0;         // type=0 ("Bonificador por Competencia") — sube `prof` directo, ver nota arriba
   const saveMods = {};           // idx 0-5 -> { flat, profGrant }
   const skillMods = {};          // id 100-117 -> { flat, profGrant }
   const unknownMods = [];        // category/type sin mapeo confirmado — solo diagnóstico en consola
@@ -986,6 +995,7 @@ function parseFC5eXML(xml, equipOverrides) {
         if (val === null) return; // "Bonus" sin valor = placeholder/flag del ítem, no un bono real (ver Espina/Pico de Guerra)
         if (isItem && ITEM_HANDLED_TYPES.has(type)) return; // ya cubierto por otra ruta
         if (type === 15) { hpModsFound.push({ value: val, source: sourceLabel }); return; }
+        if (type === 0) { profBonusFlat += val; return; } // bono directo al bonificador de competencia
         const key = BONUS_TYPE_KEYS[type];
         if (key) {
           bonuses[key] += val;
@@ -1018,6 +1028,12 @@ function parseFC5eXML(xml, equipOverrides) {
   allFeats.forEach(f => scanGenericMods(f.el, f.name, false, f));
   charFeats.forEach(f => scanGenericMods(f.el, f.name || 'dote de personaje'));
   allItems.forEach(it => { if (it.equipped) scanGenericMods(it.el, it.name || 'ítem', true); });
+
+  // Aplicar el bono directo al bonificador de competencia (type=0, p.ej.
+  // "Toque De Dorsaria" de Bo) ANTES de calcular habilidades/salvaciones/
+  // CD de conjuro/ataques más abajo, para que se refleje en cascada en
+  // todo lo que usa `prof` — no solo en un subconjunto.
+  prof += profBonusFlat;
 
   if (unknownMods.length) {
     console.warn(`[FC5e] Modifiers sin mapeo confirmado en "${name}" — revisar empíricamente:`, unknownMods);
@@ -1107,14 +1123,6 @@ function parseFC5eXML(xml, equipOverrides) {
   }));
   Object.entries(saveMods).forEach(([idx, sm]) => { if (sm.profGrant) saveProfIds.add(parseInt(idx)); });
 
-  // Detectar feat "Toque de Dorsaria" que da +1 al bonificador de competencia
-  let profBonus = prof;
-  const allFeatTexts = [...ch.querySelectorAll('feat')].map(f => $(f, 'name')).join(' ').toLowerCase();
-  const hasDorsaria = allFeatTexts.includes('toque de dorsaria') || allFeatTexts.includes('dorsaria');
-  if (hasDorsaria) {
-    profBonus += 1;
-  }
-
   const saves = SAVE_LIST.map(s => {
     const sm = saveMods[s.id];
     const proficient = saveProfIds.has(s.id);
@@ -1122,7 +1130,7 @@ function parseFC5eXML(xml, equipOverrides) {
     return {
       ...s,
       proficient,
-      mod: mods[s.ability] + (proficient ? profBonus : 0) + flatBonus
+      mod: mods[s.ability] + (proficient ? prof : 0) + flatBonus
     };
   });
 
@@ -1172,8 +1180,8 @@ function parseFC5eXML(xml, equipOverrides) {
     // está equipado (type 7 = Spell Save DC, type 8 = Spell Attack).
     if (it.equipped) {
       it.mods.forEach(md => {
-        if (md.type === 7) spellDcBonus  += md.value || 0;
-        if (md.type === 8) spellAtkBonus += md.value || 0;
+        if (md.type === 7) spellAtkBonus += md.value || 0;
+        if (md.type === 8) spellDcBonus  += md.value || 0;
       });
     }
 
@@ -1268,7 +1276,7 @@ function parseFC5eXML(xml, equipOverrides) {
   // la sección de Inventario y el toggle de equipar/desequipar.
   const items = allItems.map(({ el, ...pub }) => pub);
 
-  return { name, hpMax, hpCur, cName, cLvl:totalLevel, classInfo, raceName, prof, profBonus, mods, scores, skills, saves, trackers, abilities, spellDC, maxSpellLevel, ac:computedAC, speed, bonuses, items };
+  return { name, hpMax, hpCur, cName, cLvl:totalLevel, classInfo, raceName, prof, mods, scores, skills, saves, trackers, abilities, spellDC, maxSpellLevel, ac:computedAC, speed, bonuses, items };
 }
 
 // ── Classify a single ability text ──────────────────
@@ -3102,7 +3110,7 @@ function renderAbilityScoresSection() {
         let skillMod = s.mod;
         let modSource = '';
         if (k === 'str' && hasEffect('astral_arms_active')) {
-          skillMod = char.mods.wis + (s.proficient ? (char.profBonus || char.prof) : 0);
+          skillMod = char.mods.wis + (s.proficient ? char.prof : 0);
           modSource = ' <span style="color:var(--blue);font-size:.7rem">(SAB)</span>';
         }
         const ssign = skillMod >= 0 ? '+' : '';
@@ -3121,7 +3129,7 @@ function renderAbilityScoresSection() {
       let saveMod = save.mod;
       let modSource = '';
       if (k === 'str' && hasEffect('astral_arms_active')) {
-        saveMod = char.mods.wis + (save.proficient ? (char.profBonus || char.prof) : 0);
+        saveMod = char.mods.wis + (save.proficient ? char.prof : 0);
         modSource = ' <span style="color:var(--blue);font-size:.7rem">(SAB)</span>';
       }
       const ssign = saveMod >= 0 ? '+' : '';
