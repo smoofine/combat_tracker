@@ -20,9 +20,6 @@
   --green:#5dd98a;--green-bg:rgba(93,217,138,0.12);--green-border:rgba(93,217,138,0.3);
   --amber:#f0b84a;--amber-bg:rgba(240,184,74,0.12);--amber-border:rgba(240,184,74,0.3);
   --red:#f06060;--red-bg:rgba(240,96,96,0.12);--red-border:rgba(240,96,96,0.3);
-  --purple:#a78bfa;--purple-bg:rgba(167,139,250,0.12);--purple-border:rgba(167,139,250,0.3);
-  --teal:#2dd4bf;--teal-bg:rgba(45,212,191,0.12);--teal-border:rgba(45,212,191,0.3);
-  --pink:#f472b6;--pink-bg:rgba(244,114,182,0.12);--pink-border:rgba(244,114,182,0.3);
   --r:10px;--r-sm:7px
 }
 html,body{height:100%;background:var(--bg);color:var(--text);
@@ -194,8 +191,6 @@ html,body{height:100%;background:var(--bg);color:var(--text);
 .ab:active{opacity:.65}
 .ab.used{opacity:.35;cursor:default;text-decoration:line-through;text-decoration-color:var(--hint)}
 .ab.locked{opacity:.3;cursor:not-allowed}
-.ab.static{cursor:default}
-.ab.static:active{opacity:1}
 .ab-main{flex:1;min-width:0;padding-right:4px}
 .ab-name{font-weight:600;margin-bottom:1px}
 .ab-desc{font-size:.76rem;color:var(--muted);line-height:1.45}
@@ -303,37 +298,8 @@ html,body{height:100%;background:var(--bg);color:var(--text);
 #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 
 .combo-used{box-shadow:0 0 0 2px var(--amber)!important;border-color:var(--amber)!important}
-.passive-trait{opacity:.9;cursor:default}
+.passive-trait{opacity:.9;border-left:3px solid var(--muted);cursor:default}
 .passive-trait:hover{filter:none}
-
-/* Origen del rasgo/habilidad (bracket lateral) — ver sourceMeta().
-   Se aplica a .ab y .trig por igual; al declararse después de esas
-   reglas base, el border-left con color gana sobre el border neutro. */
-.src-class{border-left:3px solid var(--blue)}
-.src-race{border-left:3px solid var(--green)}
-.src-background{border-left:3px solid var(--amber)}
-.src-feat{border-left:3px solid var(--purple)}
-.src-spell{border-left:3px solid var(--pink)}
-.src-item{border-left:3px solid var(--teal)}
-.src-weapon{border-left:3px solid var(--red)}
-
-/* Inventario — ver renderInventorySection() */
-.inv-group-title{font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
-  color:var(--muted);margin:12px 0 6px;padding-left:1px}
-.inv-group-title:first-child{margin-top:0}
-.inv-toggle{font-size:.7rem;font-weight:600;padding:5px 11px;border-radius:8px;border:1px solid var(--border2);
-  background:var(--s2);color:var(--muted);cursor:pointer;white-space:nowrap;flex-shrink:0}
-.inv-toggle:active{opacity:.6}
-.inv-toggle.on{background:var(--green-bg);border-color:var(--green-border);color:var(--green)}
-.inv-tag{font-size:.66rem;padding:3px 9px;border-radius:8px;white-space:nowrap;flex-shrink:0;
-  background:var(--s2);color:var(--hint);font-weight:500}
-.inv-magic{color:var(--purple);font-size:.7rem;margin-left:5px}
-.inv-plain-list{background:var(--s1);border:1px solid var(--border);border-radius:var(--r-sm);overflow:hidden;margin-bottom:4px}
-.inv-plain-row{display:flex;align-items:center;justify-content:space-between;gap:8px;
-  padding:7px 11px;font-size:.76rem;border-bottom:1px solid var(--border)}
-.inv-plain-row:last-child{border-bottom:none}
-.inv-plain-name{color:var(--muted)}
-.inv-plain-qty{color:var(--hint);font-size:.7rem;flex-shrink:0}
 .undo-btn{background:none;border:1px solid var(--border);border-radius:5px;color:var(--amber);font-size:.85rem;padding:2px 7px;cursor:pointer;line-height:1}
 .undo-btn:hover{background:var(--amber);color:#000}
 
@@ -496,18 +462,11 @@ let char = null;
 let G = { round:1, hp:null, tempHp:0, actionUsed:false, bonusUsed:false,
   reactionUsed:false, reactionAvailable:false, lastUsedInSlot:{}, oncePerTurn:{}, trackers:{},
   collapsed:{}, triggerSel:{}, castLevel:{}, poolAmt:{},
-  hidden:{ abilities:{}, trackers:{} }, equipped:{},
+  hidden:{ abilities:{}, trackers:{} },
   activeEffects:{}, encounterState:{ numTargets:1, targetParalyzed:false,
     targetAsleep:false, targetProne:false, targetBlinded:false,
     targetConc:false, alliesInRange:0 },
   castTarget:{}, comboUsed:{}, lastSnapshot:null };
-
-// XML crudo del personaje importado — se cachea (memoria + localStorage)
-// para poder reparsear con parseFC5eXML(xmlText, G.equipped) cada vez que
-// se equipa/desequipa un ítem (ver toggleItemEquipped/reparseChar). Los
-// personajes guardados ANTES de esta función (sin xmlText en localStorage)
-// simplemente no podrán equipar/desequipar hasta reimportar su XML.
-let lastXmlText = null;
 
 // Maps populated on each render(), used by toggleDesc()
 let SHORT_DESC = {};
@@ -664,7 +623,7 @@ function flatFeatACBonus(feats, skipFeats) {
   return total;
 }
 
-function parseFC5eXML(xml, equipOverrides) {
+function parseFC5eXML(xml) {
   // Strip BOM and any leading whitespace/garbage before <?xml or <character
   xml = xml.replace(/^\uFEFF/, '').trim();
   const doc = new DOMParser().parseFromString(xml, 'text/xml');
@@ -687,7 +646,7 @@ function parseFC5eXML(xml, equipOverrides) {
   }));
   const totalLevel = classInfo.reduce((s,c) => s + c.level, 0) || 1;
   const cName = classInfo.map(c => `${c.name} ${c.level}`).join(' / ');
-  const prof  = Math.ceil(totalLevel / 4) + 1;
+  let prof = Math.ceil(totalLevel / 4) + 1; // ajustado más abajo con bonos type=0 (ver scanGenericMods)
   const raceName = $(ch.querySelector('race'), 'name');
 
   // ── Velocidad base ──────────────────────────────────────────────
@@ -820,79 +779,8 @@ function parseFC5eXML(xml, equipOverrides) {
     });
   });
 
-  // ── Dotes a nivel de personaje (ASI): hijos DIRECTOS de <character> ──
-  // Deliberadamente separadas de allFeats: allFeats alimenta el parseo de
-  // CA en prosa (flatFeatACBonus/parseUnarmoredACFormulas más abajo) y
-  // mezclar dotes ahí arriesgaba sumar bonos condicionales de su texto a
-  // la CA base. Sí participan igual que cualquier feat en bonos de
-  // característica/mods genéricos/competencias (como ya hacían antes) y
-  // ahora también se muestran como habilidades propias (acción/adicional/
-  // pasiva/etc.), etiquetadas source:'feat' para distinguirlas en la UI.
-  const charFeats = [...ch.children]
-    .filter(c => c.tagName.toLowerCase() === 'feat')
-    .map(f => ({ name:$(f,'name'), text:$(f,'text'), source:'feat', el:f }))
-    .filter(f => f.name.length > 1);
-
-  // ── Items: metadatos + estado de equipado ──────────────────────────
-  // FC5e NO tiene un booleano <equipped> — el propio <slot> es la señal:
-  // solo aparece en ítems que el jugador marcó como equipados/empuñados
-  // en el editor (verificado empíricamente en los 6 personajes: armas de
-  // repuesto sin usar y accesorios nunca equipados no tienen <slot>, ver
-  // CONTEXTO_PROYECTO.md §2.9). `equipOverrides` (si viene) es el estado
-  // vivo de la sesión (G.equipped) y pisa ese default XML ítem por ítem.
-  const equipOv = equipOverrides || {};
-  const allItems = $$(ch, 'item').map((el, idx) => {
-    const id = `item${idx}`;
-    const typeStr = $(el, 'type');
-    const type = typeStr === '' ? null : (parseInt(typeStr) || 0);
-    const slot = parseInt($(el, 'slot')) || 0;
-    const ac = parseInt($(el, 'ac')) || 0;
-    const damage1H = $(el, 'damage1H');
-    const mods = $$(el, 'mod').map(md => ({
-      category: $(md, 'category'),
-      type:  parseInt($(md, 'type')) || 0,
-      value: $(md, 'value') !== '' ? parseInt($(md, 'value')) : null
-    }));
-
-    const isWeapon    = type !== null && WEAPON_TYPES.has(type) && !!damage1H;
-    const isBodyArmor = slot === 5 && ac > 0;
-    const isShield    = type === 14 && ac > 0;
-    const isPotion    = type === 12;
-    const isCurrency  = type === 15;
-    const isAmmo      = type === 7;
-    const isRing      = type === 11;
-    const isWondrous  = type === 14 && !isShield;
-
-    // Equipable: cualquier arma (se puede empuñar), cualquier ítem que
-    // YA tuvo un slot asignado por FC5e, cualquier ítem con al menos un
-    // <mod> (bono numérico real), o un anillo/objeto maravilloso (type
-    // 11/14) — estos últimos son inherentemente "para llevar puesto"
-    // aunque el jugador no le haya asignado slot todavía en FC5e.
-    const equippable = isWeapon || slot > 0 || mods.length > 0 || isRing || isWondrous;
-    const equipped = equipOv[id] !== undefined ? !!equipOv[id] : slot > 0;
-
-    // Mundano sin <type> (mochila, antorcha, soga...), moneda y munición
-    // no generan tarjeta de habilidad — son ruido, no rasgos accionables.
-    const showAsAbility = type !== null && !isCurrency && !isAmmo && (equippable || isPotion);
-
-    let category = 'gear';
-    if (isWeapon) category = 'weapon';
-    else if (isBodyArmor) category = 'armor';
-    else if (isShield) category = 'shield';
-    else if (isPotion) category = 'potion';
-    else if (isAmmo) category = 'ammo';
-    else if (isCurrency) category = 'currency';
-    else if (isRing) category = 'ring';
-    else if (isWondrous) category = 'wondrous';
-
-    return {
-      id, el, name: $(el,'name'), text: $(el,'text'), type, slot, ac, mods,
-      damage1H, damage2H: $(el,'damage2H'), weaponProperty: parseInt($(el,'weaponProperty'))||0,
-      magic: $(el,'magic') === '1', quantity: $(el,'quantity'), value: $(el,'value'), weight: $(el,'weight'),
-      isWeapon, isBodyArmor, isShield, isPotion, isCurrency, isAmmo, isRing, isWondrous,
-      equippable, equipped, showAsAbility, category
-    };
-  });
+  // ── Items: non-weapon feats + weapon attacks + global spell mods ──
+  const allItems = $$(ch, 'item');
   const itemFeats = [];
   const weapons   = [];
   let spellDcBonus = 0, spellAtkBonus = 0;
@@ -921,8 +809,8 @@ function parseFC5eXML(xml, equipOverrides) {
   addAbilityBonus(ch.querySelector('background'));
   classEls.forEach(addAbilityBonus);
   allFeats.forEach(f => addAbilityBonus(f.el));
-  charFeats.forEach(f => addAbilityBonus(f.el)); // dotes a nivel de personaje
-  allItems.forEach(it => { if (it.equipped) addAbilityBonus(it.el); });
+  [...ch.children].filter(c => c.tagName.toLowerCase() === 'feat').forEach(addAbilityBonus); // dotes a nivel de personaje
+  allItems.forEach(addAbilityBonus);
 
   // ── Modifiers genéricos de FC5e (bonos más allá de puntuación de
   // característica) — ver CONTEXTO_PROYECTO.md §2.8 para el mapeo
@@ -932,24 +820,32 @@ function parseFC5eXML(xml, equipOverrides) {
   // (<type>=0-17, +100 = id absoluto de SKILL_LIST). <category>=1 ya se
   // trató arriba (puntuación de característica).
   // <category>=2 ("Modificador de Característica") apareció una sola vez
-  // en los 6 personajes de prueba (Brazos del Yo Astral de Rhyo) y
-  // describía un mecanismo CONDICIONAL — sustituir SAB por FUE mientras
-  // ese efecto está activo — no un bono permanente. Sumarlo a ciegas
-  // corrompería puntuaciones ya validadas (ver tabla §4), así que NO se
-  // auto-aplica; solo queda registrado para revisión manual si aparece.
-  // Subtipos de "Bonus" (categoría 0) confirmados empíricamente: 1=ataques
-  // con arma, 2=daño con arma, 3=ataques cuerpo a cuerpo, 4=daño cuerpo a
-  // cuerpo, 5=ataques a distancia, 6=daño a distancia, 7=CD de conjuros,
-  // 8=ataque de conjuros, 10=CA, 13=velocidad. El resto (0, 9, 11, 12, 14,
-  // 16, 17...) no tiene un caso confirmado en los 6 personajes de prueba
-  // — se ignoran y se registran en consola en vez de adivinar su efecto
-  // (mismo criterio metodológico que el resto del parser: no asumir sin
-  // verificar). type=15 (puntos de golpe) SÍ está confirmado (Draconic
-  // Resilience de Dorym) pero NO se suma a hpMax: <hpMax> es un campo ya
-  // computado por FC5e (a diferencia de <abilities>, que exporta valores
-  // base) y no hay forma de verificar si ya lo incluye sin una cifra de
-  // referencia confirmada por el usuario — se registra para revisión en
-  // vez de arriesgar un doble conteo silencioso sobre un dato ya confiable.
+  // en los 6 personajes de prueba (Brazos del Yo Astral de Rhyo, en una
+  // versión anterior del XML) y describía un mecanismo CONDICIONAL —
+  // sustituir SAB por FUE mientras ese efecto está activo — no un bono
+  // permanente. Sumarlo a ciegas corrompería puntuaciones ya validadas
+  // (ver tabla §4), así que NO se auto-aplica; solo queda registrado para
+  // revisión manual si aparece. Esta es la decisión final, no un
+  // pendiente: la sustitución condicional real de Brazos del Yo Astral ya
+  // está cubierta por el sistema de efectos (`astral_arms_active`, ver
+  // §3.3), que sabe CUÁNDO aplica la condición — algo que un `<mod>`
+  // category=2 sumado ciegamente nunca podría saber.
+  // Subtipos de "Bonus" (categoría 0): son exactamente 16, <type>=0-15,
+  // confirmado por el propio menú de FC5e (ver CONTEXTO_PROYECTO.md §2.8
+  // para la lista completa con nivel de confianza de cada uno — varios
+  // vía dato real, un par por posición en el menú sin caso real que lo
+  // desambigüe todavía). type=16/17 NO son de esta categoría — son
+  // `category=4` (Habilidad), donde 0-17 identifica CUÁL habilidad, no
+  // un subtipo de bono (ver arriba). type=15 (puntos de golpe) SÍ está
+  // confirmado (Draconic Resilience de Dorym) pero NUNCA se suma a
+  // hpMax — decisión confirmada empíricamente (no solo por cautela):
+  // se probó agregando un ítem con `mod type=15 value=1` a Rhyo y
+  // `<hpMax>` exportado por FC5e NO cambió (se quedó en 77) — o sea que
+  // FC5e no recalcula `<hpMax>` en base a los mods del personaje, es un
+  // campo que el usuario fija a mano en la app. Sumar type=15 nosotros
+  // encima de un `<hpMax>` que ya es la cifra final duplicaría el bono
+  // apenas el jugador lo reflejara en su hoja. Se sigue registrando en
+  // consola solo como diagnóstico informativo.
   //
   // Los tipos 1/2/3/4/5/6/7/8/10 en ÍTEMS ya se leen (o deberían leerse)
   // por rutas separadas más abajo: CA de armadura/escudo/accesorio, CD y
@@ -963,7 +859,7 @@ function parseFC5eXML(xml, equipOverrides) {
   // Velocidad") no tiene ruta propia y sí se agrega también desde ítems.
   const BONUS_TYPE_KEYS = {
     1:'weaponAtk', 2:'weaponDmg', 3:'meleeAtk', 4:'meleeDmg',
-    5:'rangedAtk', 6:'rangedDmg', 7:'spellDcBonus', 8:'spellAtkBonus',
+    5:'rangedAtk', 6:'rangedDmg', 7:'spellAtkBonus', 8:'spellDcBonus',
     10:'acBonus', 13:'speedBonus'
   };
   const ITEM_HANDLED_TYPES = new Set([1, 2, 3, 4, 5, 6, 7, 8, 10]);
@@ -971,6 +867,7 @@ function parseFC5eXML(xml, equipOverrides) {
                      spellDcBonus:0, spellAtkBonus:0, acBonus:0, speedBonus:0 };
   const acModFeats = new Set();  // feats con CA vía <mod> numérico — flatFeatACBonus() los excluye para no duplicar
   const hpModsFound = [];        // type=15 detectados pero NO aplicados (ver nota arriba)
+  let profBonusFlat = 0;         // type=0 ("Bonificador por Competencia") — sube `prof` directo, ver nota arriba
   const saveMods = {};           // idx 0-5 -> { flat, profGrant }
   const skillMods = {};          // id 100-117 -> { flat, profGrant }
   const unknownMods = [];        // category/type sin mapeo confirmado — solo diagnóstico en consola
@@ -986,6 +883,7 @@ function parseFC5eXML(xml, equipOverrides) {
         if (val === null) return; // "Bonus" sin valor = placeholder/flag del ítem, no un bono real (ver Espina/Pico de Guerra)
         if (isItem && ITEM_HANDLED_TYPES.has(type)) return; // ya cubierto por otra ruta
         if (type === 15) { hpModsFound.push({ value: val, source: sourceLabel }); return; }
+        if (type === 0) { profBonusFlat += val; return; } // bono directo al bonificador de competencia
         const key = BONUS_TYPE_KEYS[type];
         if (key) {
           bonuses[key] += val;
@@ -1016,8 +914,15 @@ function parseFC5eXML(xml, equipOverrides) {
   scanGenericMods(ch.querySelector('background'), 'trasfondo');
   classEls.forEach(c => scanGenericMods(c, `clase (${$(c,'name')})`));
   allFeats.forEach(f => scanGenericMods(f.el, f.name, false, f));
-  charFeats.forEach(f => scanGenericMods(f.el, f.name || 'dote de personaje'));
-  allItems.forEach(it => { if (it.equipped) scanGenericMods(it.el, it.name || 'ítem', true); });
+  [...ch.children].filter(c => c.tagName.toLowerCase() === 'feat')
+    .forEach(f => scanGenericMods(f, $(f,'name') || 'dote de personaje'));
+  allItems.forEach(it => scanGenericMods(it, $(it,'name') || 'ítem', true));
+
+  // Aplicar el bono directo al bonificador de competencia (type=0, p.ej.
+  // "Toque De Dorsaria" de Bo) ANTES de calcular habilidades/salvaciones/
+  // CD de conjuro/ataques más abajo, para que se refleje en cascada en
+  // todo lo que usa `prof` — no solo en un subconjunto.
+  prof += profBonusFlat;
 
   if (unknownMods.length) {
     console.warn(`[FC5e] Modifiers sin mapeo confirmado en "${name}" — revisar empíricamente:`, unknownMods);
@@ -1073,7 +978,7 @@ function parseFC5eXML(xml, equipOverrides) {
     : [];
   const profSources = [
     ch.querySelector('race'), ch.querySelector('background'), ...classEls,
-    ...charFeats.map(f => f.el),
+    ...[...ch.children].filter(c => c.tagName.toLowerCase() === 'feat'),
     ...allFeats.map(f => f.el)
   ];
   const profIds = new Set();
@@ -1107,14 +1012,6 @@ function parseFC5eXML(xml, equipOverrides) {
   }));
   Object.entries(saveMods).forEach(([idx, sm]) => { if (sm.profGrant) saveProfIds.add(parseInt(idx)); });
 
-  // Detectar feat "Toque de Dorsaria" que da +1 al bonificador de competencia
-  let profBonus = prof;
-  const allFeatTexts = [...ch.querySelectorAll('feat')].map(f => $(f, 'name')).join(' ').toLowerCase();
-  const hasDorsaria = allFeatTexts.includes('toque de dorsaria') || allFeatTexts.includes('dorsaria');
-  if (hasDorsaria) {
-    profBonus += 1;
-  }
-
   const saves = SAVE_LIST.map(s => {
     const sm = saveMods[s.id];
     const proficient = saveProfIds.has(s.id);
@@ -1122,33 +1019,44 @@ function parseFC5eXML(xml, equipOverrides) {
     return {
       ...s,
       proficient,
-      mod: mods[s.ability] + (proficient ? profBonus : 0) + flatBonus
+      mod: mods[s.ability] + (proficient ? prof : 0) + flatBonus
     };
   });
 
   // ── Armor Class calculation ──────────────────────────────────────
-  // isBodyArmor(slot=5+ac>0) / isShield(type=14+ac>0) — ver clasificación
-  // de allItems más arriba. mod type=10 = bonus mágico de CA y puede venir
-  // de CUALQUIER ítem equipado (armadura, accesorio, o incluso un arma con
-  // una propiedad tipo "Protector" — p.ej. un arma consciente que otorga
-  // CA a quien la empuña). Solo cuentan los ítems actualmente equipados.
+  // slot=5 = armadura, type=14+ac>0 = escudo. mod type=10 = bonus mágico de
+  // CA y puede venir de CUALQUIER ítem equipado (armadura, accesorio, o
+  // incluso un arma con una propiedad tipo "Protector" — p.ej. un arma
+  // consciente que otorga CA a quien la empuña).
   // Tipos de armadura: 1=ligera(+DEX), 2=media(+DEX máx 2), 3=pesada(sin DEX).
   let armorBaseAC = 0, armorType = 0, armorMagicBonus = 0;
   let shieldAC = 0, flatItemACBonus = 0;
   let hasBodyArmor = false;
   allItems.forEach(it => {
-    if (!it.equipped) return;
+    const itType = parseInt($(it,'type'));
+    const itSlot = parseInt($(it,'slot')) || 0;
+    const itAC   = parseInt($(it,'ac'))   || 0;
+    if (!itSlot) return;
 
-    if (it.isBodyArmor) {
-      armorBaseAC = it.ac; armorType = it.type; hasBodyArmor = true;
-      it.mods.forEach(md => { if (md.type === 10 && md.value > 0) armorMagicBonus += md.value; });
-    } else if (it.isShield) {
-      // Se usa <ac> directamente — su mod10 sería redundante (mismo valor)
-      shieldAC = Math.max(shieldAC, it.ac);
+    if (itSlot === 5 && itAC > 0) {
+      // Armadura corporal
+      armorBaseAC = itAC; armorType = itType; hasBodyArmor = true;
+      $$(it,'mod').forEach(md => {
+        const mt = parseInt($(md,'type')) || 0;
+        const mv = $(md,'value') !== '' ? parseInt($(md,'value')) : 0;
+        if (mt === 10 && mv > 0) armorMagicBonus += mv;
+      });
+    } else if (itType === 14 && itAC > 0) {
+      // Escudo: se usa <ac> directamente — su mod10 es redundante (mismo valor)
+      shieldAC = Math.max(shieldAC, itAC);
     } else {
       // Cualquier otro ítem equipado (accesorio, arma, etc.): solo su(s)
       // mod type=10 aportan a la CA.
-      it.mods.forEach(md => { if (md.type === 10 && md.value > 0) flatItemACBonus += md.value; });
+      $$(it,'mod').forEach(md => {
+        const mt = parseInt($(md,'type')) || 0;
+        const mv = $(md,'value') !== '' ? parseInt($(md,'value')) : 0;
+        if (mt === 10 && mv > 0) flatItemACBonus += mv;
+      });
     }
   });
 
@@ -1168,30 +1076,31 @@ function parseFC5eXML(xml, equipOverrides) {
   computedAC += shieldAC + flatItemACBonus + flatFeatACBonus(allFeats, acModFeats) + bonuses.acBonus;
 
   allItems.forEach(it => {
-    // Bonos globales de conjuro (CD/ataque de conjuro) — solo si el ítem
-    // está equipado (type 7 = Spell Save DC, type 8 = Spell Attack).
-    if (it.equipped) {
-      it.mods.forEach(md => {
-        if (md.type === 7) spellDcBonus  += md.value || 0;
-        if (md.type === 8) spellAtkBonus += md.value || 0;
-      });
-    }
+    const itName = $(it,'name'), itText = $(it,'text');
+    const type   = parseInt($(it,'type'));
 
-    if (it.isWeapon) {
-      // Se agregan TODAS las armas (equipadas o no): su índice en este
-      // array determina el id `w{idx}` que les asigna buildAbilities, y
-      // ese id debe ser ESTABLE ante toggles de equipar/desequipar (ver
-      // §2.9 — de lo contrario G.hidden.abilities/oncePerTurn quedarían
-      // desincronizados). buildAbilities omite las no equipadas por su
-      // cuenta usando el flag `equipped` de abajo.
+    // Global spellcasting modifiers (type 7 = Spell Save DC, type 8 = Spell Attack)
+    $$(it,'mod').forEach(md => {
+      const mt = parseInt($(md,'type')) || 0;
+      const mv = $(md,'value') !== '' ? parseInt($(md,'value')) : 0;
+      if (mt === 7) spellDcBonus  += mv;
+      if (mt === 8) spellAtkBonus += mv;
+    });
+
+    if (WEAPON_TYPES.has(type) && $(it,'damage1H')) {
       weapons.push({
-        name: it.name, type: it.type, damage1H: it.damage1H, damage2H: it.damage2H,
-        weaponProperty: it.weaponProperty, mods: it.mods, equipped: it.equipped
+        name: itName,
+        type,
+        damage1H: $(it,'damage1H'),
+        damage2H: $(it,'damage2H'),
+        weaponProperty: parseInt($(it,'weaponProperty')) || 0,
+        mods: $$(it,'mod').map(md => ({
+          type:  parseInt($(md,'type')) || 0,
+          value: $(md,'value') !== '' ? parseInt($(md,'value')) : null
+        }))
       });
-    } else if (it.showAsAbility && it.name && it.text) {
-      // Mismo motivo: siempre se agrega, buildAbilities decide visibilidad
-      // según `equipped` (alwaysActive:true para pociones — no se "equipan").
-      itemFeats.push({ name: it.name, text: it.text, source:'item', equipped: it.equipped, alwaysActive: it.isPotion });
+    } else if (itName && itText) {
+      itemFeats.push({ name:itName, text:itText, source:'item' });
     }
   });
 
@@ -1244,8 +1153,7 @@ function parseFC5eXML(xml, equipOverrides) {
   // trackers for ownPool matches (to fix the Imponer las Manos → PH
   // collision), the pool trackers already exist in the array.
   const poolSeen = new Set();
-  [...allFeats, ...itemFeats, ...charFeats].forEach((e, i) => {
-    if (e.equipped === false && !e.alwaysActive) return;
+  [...allFeats, ...itemFeats].forEach((e, i) => {
     const key = e.name.toLowerCase();
     if (poolSeen.has(key)) return;
     const pool = detectResourcePool(e.name, e.text, classInfo, totalLevel, mods, prof);
@@ -1261,14 +1169,10 @@ function parseFC5eXML(xml, equipOverrides) {
   // Trackers are now complete (native + pool-synthesized); pass them to
   // buildAbilities so ownPool detection works correctly.
   const abilities = buildAbilities(
-    [...allFeats, ...itemFeats, ...charFeats], totalLevel, mods, prof, weapons, spellEntries, spellDC, trackers, bonuses
+    [...allFeats, ...itemFeats], totalLevel, mods, prof, weapons, spellEntries, spellDC, trackers, bonuses
   );
 
-  // Inventario: metadatos serializables (sin `.el`, es un nodo DOM) para
-  // la sección de Inventario y el toggle de equipar/desequipar.
-  const items = allItems.map(({ el, ...pub }) => pub);
-
-  return { name, hpMax, hpCur, cName, cLvl:totalLevel, classInfo, raceName, prof, profBonus, mods, scores, skills, saves, trackers, abilities, spellDC, maxSpellLevel, ac:computedAC, speed, bonuses, items };
+  return { name, hpMax, hpCur, cName, cLvl:totalLevel, classInfo, raceName, prof, mods, scores, skills, saves, trackers, abilities, spellDC, maxSpellLevel, ac:computedAC, speed, bonuses };
 }
 
 // ── Classify a single ability text ──────────────────
@@ -1974,12 +1878,6 @@ function buildAbilities(entries, level, mods, prof, weapons, spellEntries, spell
 
   // ── Weapon attacks ────────────────────────────────
   weapons.filter(w => !/unarmed|sin armas/i.test(w.name)).forEach((w, wi) => {
-    // w.equipped === false → arma desequipada: no debe listarse como
-    // ataque disponible. El chequeo va DENTRO del forEach (no como
-    // .filter() previo) para que `wi` —y por lo tanto el id `w{wi}`—
-    // sea estable ante toggles de equipar/desequipar (ver §2.9).
-    if (w.equipped === false) return;
-
     const finesse  = (w.weaponProperty & FINESSE_BIT) !== 0;
     const isRanged = w.type === 6;
     const abMod    = isRanged ? mods.dex : (finesse ? Math.max(mods.str, mods.dex) : mods.str);
@@ -2045,11 +1943,6 @@ function buildAbilities(entries, level, mods, prof, weapons, spellEntries, spell
   // ── Feats / item abilities ────────────────────────
   const seen = new Set();
   entries.forEach((e, idx) => {
-    // e.equipped === false → habilidad de un ítem actualmente desequipado
-    // (alwaysActive:true la exceptúa, p.ej. pociones). Igual que con las
-    // armas arriba: el chequeo va DENTRO del forEach para que `idx` —y el
-    // id `e{idx}`— sea estable ante toggles de equipar/desequipar (§2.9).
-    if (e.equipped === false && !e.alwaysActive) return;
     if (SKIP_NAMES.test(e.name) || SKIP_NAMES_EXACT.test(e.name.trim())) return;
     if (e.text.length < 30) return;
 
@@ -2213,29 +2106,6 @@ function buildAbilities(entries, level, mods, prof, weapons, spellEntries, spell
   });
 
   return out;
-}
-
-// ── Origen de cada rasgo/habilidad (bracket lateral + etiqueta) ──────
-// Fuente única usada por render()/renderPassiveSection()/renderUtilitySection()/
-// renderTriggerSection() — antes cada una recalculaba su propio srcLabel
-// (parcial y sin color). ab.source viene de parseFC5eXML/buildAbilities
-// ('class'|'race'|'background'|'feat'|'item'|'weapon'|'spell') y no se
-// toca aquí: es un campo funcional del que depende buildSuggestions
-// (p.ej. detectar ataques con arma para Smite/Acelerar), así que el
-// ataque sin armas (id '__attack', source:'class' por diseño — ver
-// buildAbilities) se distingue SOLO a nivel visual, sin reasignar source.
-const SOURCE_META = {
-  class:      { cls:'src-class',      label:'🎓 clase' },
-  race:       { cls:'src-race',       label:'🧬 raza' },
-  background: { cls:'src-background', label:'🗺 trasfondo' },
-  feat:       { cls:'src-feat',       label:'⭐ dote' },
-  spell:      { cls:'src-spell',      label:'🔮 conjuro' },
-  item:       { cls:'src-item',       label:'📦 ítem' },
-  weapon:     { cls:'src-weapon',     label:'🗡 arma' },
-};
-function sourceMeta(ab) {
-  if (ab.id === '__attack') return { cls:'src-weapon', label:'🤜 ataque sin armas' };
-  return SOURCE_META[ab.source] || SOURCE_META.class;
 }
 
 // ═══════════════════════════════════════════════════
@@ -2508,7 +2378,11 @@ function render() {
       } else {
         fn = dis ? '' : `useAb('${ab.id}','${sec.flag}',${ab.pc},${ab.once},${ab.spellLevel>0?castLevel:0},'${ab.resKey||''}','${slotPrefix}')`;
       }
-      const { cls:srcCls, label:srcLabel } = sourceMeta(ab);
+      const srcLabel = ab.source === 'item'   ? '📦 ítem' :
+                       ab.source === 'weapon' ? '🗡 arma' :
+                       ab.source === 'race'   ? '🧬 raza' :
+                       ab.source === 'background' ? '🗺 trasfondo' :
+                       ab.source === 'spell'  ? '🔮 conjuro' : '';
 
       SHORT_DESC[ab.id] = ab.desc;
       if (ab.full) FULL_DESC[ab.id] = ab.full;
@@ -2592,7 +2466,7 @@ function render() {
 
       // Layout reorganizado: [ab-main] [ab-right: costs + X]
       // X ya no es position:absolute — vive en .ab-right para no solapar el stepper
-      h += `<div class="ab ${srcCls}${cls2?' '+cls2:''}${comboHighlight}" onclick="${fn}">
+      h += `<div class="ab ${cls2}${comboHighlight}" onclick="${fn}">
         <div class="ab-main">
           <div class="ab-name">${esc(ab.name)}</div>
           <div class="ab-desc" id="desc-${ab.id}">${esc(ab.desc)}</div>
@@ -2619,9 +2493,6 @@ function render() {
   const utilAll = char.abilities.utility || [];
   hiddenACount += utilAll.filter(a => G.hidden.abilities[a.id]).length;
   h += renderUtilitySection();
-
-  // ── Inventario: equipar/desequipar ítems ──────────
-  h += renderInventorySection();
 
   // ── Rasgos pasivos / siempre activos ──────────────
   h += renderPassiveSection();
@@ -3102,7 +2973,7 @@ function renderAbilityScoresSection() {
         let skillMod = s.mod;
         let modSource = '';
         if (k === 'str' && hasEffect('astral_arms_active')) {
-          skillMod = char.mods.wis + (s.proficient ? (char.profBonus || char.prof) : 0);
+          skillMod = char.mods.wis + (s.proficient ? char.prof : 0);
           modSource = ' <span style="color:var(--blue);font-size:.7rem">(SAB)</span>';
         }
         const ssign = skillMod >= 0 ? '+' : '';
@@ -3121,7 +2992,7 @@ function renderAbilityScoresSection() {
       let saveMod = save.mod;
       let modSource = '';
       if (k === 'str' && hasEffect('astral_arms_active')) {
-        saveMod = char.mods.wis + (save.proficient ? (char.profBonus || char.prof) : 0);
+        saveMod = char.mods.wis + (save.proficient ? char.prof : 0);
         modSource = ' <span style="color:var(--blue);font-size:.7rem">(SAB)</span>';
       }
       const ssign = saveMod >= 0 ? '+' : '';
@@ -3167,89 +3038,6 @@ function renderAbilityScoresSection() {
   return h + `</div>`;
 }
 
-const INV_CATEGORY_META = {
-  weapon:   { label:'Armas',                emoji:'🗡️' },
-  armor:    { label:'Armadura',             emoji:'🛡️' },
-  shield:   { label:'Escudos',              emoji:'🔰' },
-  ring:     { label:'Anillos',              emoji:'💍' },
-  wondrous: { label:'Objetos maravillosos', emoji:'✨' },
-  potion:   { label:'Consumibles',          emoji:'🧪' },
-  other:    { label:'Otros objetos equipables', emoji:'🎒' },
-};
-
-function renderInventorySection() {
-  // Personajes cargados antes de esta función no tienen char.items
-  // cacheado (ni el XML crudo guardado) — hace falta reimportar una vez.
-  if (!char.items) {
-    if (!lastXmlText) {
-      return `<div class="section"><div class="sec-head">
-        <div class="sec-dot d-utility"></div><span class="sec-name">🎒 Inventario</span>
-      </div>
-      <div class="ab static">
-        <div class="ab-main"><div class="ab-desc">Reimportá el XML de tu personaje (pantalla de carga) para habilitar el inventario equipable.</div></div>
-      </div></div>`;
-    }
-    return '';
-  }
-  if (!char.items.length) return '';
-
-  const collapsed = !!G.collapsed.inventory;
-  let h = `<div class="section"><div class="sec-head sec-toggle ${collapsed?'collapsed':''}" onclick="toggleSection('inventory')">
-    <div class="sec-dot d-utility"></div>
-    <span class="sec-name">🎒 Inventario (${char.items.length})</span>
-    <span class="chev" style="margin-left:auto">▾</span>
-  </div>`;
-  if (collapsed) return h + `</div>`;
-
-  const equippableItems = char.items.filter(it => it.equippable || it.isPotion);
-  const plainItems      = char.items.filter(it => !it.equippable && !it.isPotion);
-
-  const groupOrder = ['weapon','armor','shield','ring','wondrous','potion','other'];
-  const grouped = {};
-  equippableItems.forEach(it => {
-    const key = INV_CATEGORY_META[it.category] ? it.category : 'other';
-    (grouped[key] = grouped[key] || []).push(it);
-  });
-
-  groupOrder.forEach(key => {
-    const catItems = grouped[key];
-    if (!catItems || !catItems.length) return;
-    const meta = INV_CATEGORY_META[key];
-    h += `<div class="inv-group-title">${meta.emoji} ${meta.label}</div>`;
-    catItems.forEach(it => {
-      const desc = it.text ? shortDesc(it.text) : '';
-      const full = it.text ? fullDescClean(it.text) : '';
-      if (desc) { SHORT_DESC[it.id] = desc; if (full !== desc) FULL_DESC[it.id] = full; }
-      const srcCls = it.isWeapon ? 'src-weapon' : 'src-item';
-      const magic = it.magic ? '<span class="inv-magic" title="Mágico">✨</span>' : '';
-      const toggle = it.isPotion
-        ? `<span class="inv-tag">consumible</span>`
-        : `<button class="inv-toggle ${it.equipped?'on':''}" onclick="toggleItemEquipped('${it.id}')">${it.equipped?'✓ Equipado':'Equipar'}</button>`;
-      h += `<div class="ab static ${srcCls}">
-        <div class="ab-main">
-          <div class="ab-name">${esc(it.name)}${magic}</div>
-          ${desc ? `<div class="ab-desc" id="desc-${it.id}">${esc(desc)}</div>` : ''}
-          ${full !== desc && desc ? `<span class="ab-more" id="more-${it.id}" onclick="toggleDesc('${it.id}')">ver más ▾</span>` : ''}
-        </div>
-        <div class="ab-right">${toggle}</div>
-      </div>`;
-    });
-  });
-
-  // Otros objetos: moneda, munición y bártulos mundanos sin efecto
-  // mecánico — solo informativos, no se equipan ni generan habilidades.
-  if (plainItems.length) {
-    h += `<div class="inv-group-title">🎒 Otros objetos</div><div class="inv-plain-list">`;
-    plainItems.forEach(it => {
-      const qty = it.quantity ? `<span class="inv-plain-qty">×${esc(it.quantity)}</span>` : '';
-      h += `<div class="inv-plain-row"><span class="inv-plain-name">${esc(it.name)}</span>${qty}</div>`;
-    });
-    h += `</div>`;
-  }
-
-  return h + `</div>`;
-}
-
 function renderPassiveSection() {
   const all = (char.abilities.passive || []).filter(a => !G.hidden.abilities[a.id]);
   if (!all.length) return '';
@@ -3265,8 +3053,8 @@ function renderPassiveSection() {
   all.forEach(ab => {
     SHORT_DESC[ab.id] = ab.desc;
     if (ab.full) FULL_DESC[ab.id] = ab.full;
-    const { cls:srcCls, label:srcLabel } = sourceMeta(ab);
-    h += `<div class="ab passive-trait ${srcCls}">
+    const srcLabel = ab.source === 'item' ? '📦 ítem' : ab.source === 'race' ? '🧬 raza' : ab.source === 'background' ? '🗺 trasfondo' : '';
+    h += `<div class="ab passive-trait">
       <button class="x-btn" onclick="hideAbility('${ab.id}')" title="Ocultar">✕</button>
       <div class="ab-main">
         <div class="ab-name">${esc(ab.name)}</div>
@@ -3310,13 +3098,16 @@ function renderUtilitySection() {
       const slotCur = slotTracker ? (G.trackers[slotTracker.id] ?? slotTracker.max) : 0;
       slotOk = slotTracker ? slotCur > 0 : false;
     }
-    const { cls:srcCls, label:srcLabel } = sourceMeta(ab);
+    const srcLabel = ab.source === 'item'   ? '📦 ítem' :
+                     ab.source === 'race'   ? '🧬 raza' :
+                     ab.source === 'background' ? '🗺 trasfondo' :
+                     ab.source === 'spell'  ? '🔮 conjuro' : '';
 
     const utilConcWarning = (ab.isConcentration && isConcentrating())
       ? `<div class="conc-warning">⚠️ Reemplaza <em>${esc(activeConcentrationLabel() || 'concentración activa')}</em></div>`
       : '';
 
-    h += `<div class="ab util ${srcCls}">
+    h += `<div class="ab util">
       <button class="x-btn" onclick="hideAbility('${ab.id}')" title="Ocultar">✕</button>
       <div class="ab-main">
         <div class="ab-name">${esc(ab.name)}</div>
@@ -3376,7 +3167,9 @@ function renderTriggerSection() {
   all.forEach(ab => {
     SHORT_DESC[ab.id] = ab.desc;
     if (ab.full) FULL_DESC[ab.id] = ab.full;
-    const { cls:srcCls, label:srcLabel } = sourceMeta(ab);
+    const srcLabel = ab.source === 'item' ? '📦 ítem' :
+                     ab.source === 'race' ? '🧬 raza' :
+                     ab.source === 'background' ? '🗺 trasfondo' : '';
     const displayName = ab.triggerKind === 'metamagic' && !/metamagi/i.test(ab.name)
       ? `🔀 Metamagia: ${ab.name}` : ab.name;
 
@@ -3389,7 +3182,7 @@ function renderTriggerSection() {
     const pcTracker = (ab.pc > 0 || ab.variablePC) ? findResTracker(ab.resKey) : null;
     const resLabel = resAbbrev(ab.resKey, pcTracker?.label);
 
-    h += `<div class="trig ${srcCls}">
+    h += `<div class="trig">
       <button class="x-btn" onclick="hideAbility('${ab.id}')" title="Ocultar">✕</button>
       <div class="trig-head">
         <div class="trig-main">
@@ -3637,46 +3430,6 @@ function clickTDot(id, i) {
   save(); render();
 }
 
-// ── Inventario: equipar / desequipar ──────────────────────────────
-// Reparsea el XML crudo cacheado con el nuevo estado de G.equipped —
-// reutiliza TODA la lógica ya validada de CA/característica/bonos/
-// habilidades en vez de duplicarla (ver §2.9 en CONTEXTO_PROYECTO.md).
-// Los ids de ítem (`item{idx}`) y de habilidad (`e{idx}`/`w{idx}`) son
-// estables entre reparseos porque siempre se derivan de la posición en
-// el XML, nunca de un array ya filtrado por equipado — así que G.hidden/
-// G.oncePerTurn/etc. no se desincronizan al tocar el inventario.
-function reparseChar() {
-  if (!lastXmlText) { toast('Reimportá el personaje para poder equipar ítems'); return; }
-  const newChar = parseFC5eXML(lastXmlText, G.equipped);
-  char = newChar;
-  // Trackers nuevos (p.ej. un pool que solo existe con el ítem equipado)
-  // arrancan en su máximo; los que ya existían conservan su valor actual.
-  char.trackers.forEach(t => { if (G.trackers[t.id] === undefined) G.trackers[t.id] = t.max; });
-  save();
-  render();
-}
-
-function toggleItemEquipped(id) {
-  const item = (char.items || []).find(i => i.id === id);
-  if (!item || !item.equippable) return;
-  const next = !item.equipped;
-  // Un solo cuerpo de armadura y un solo escudo puestos a la vez — al
-  // equipar uno nuevo se desequipa automáticamente el anterior del mismo
-  // tipo (si no, la fórmula de CA simplemente ignoraría el redundante,
-  // pero dejarlo "equipado" en la UI sería confuso).
-  if (next && (item.isBodyArmor || item.isShield)) {
-    char.items.forEach(other => {
-      if (other.id !== id && other.equipped &&
-          ((item.isBodyArmor && other.isBodyArmor) || (item.isShield && other.isShield))) {
-        G.equipped[other.id] = false;
-      }
-    });
-  }
-  G.equipped[id] = next;
-  reparseChar();
-}
-
-
 // ── Hide / restore (recycle bin) ─────────────────────
 function hideAbility(id) { G.hidden.abilities[id] = true; save(); render(); }
 function hideTracker(id) { G.hidden.trackers[id] = true; save(); render(); }
@@ -3920,14 +3673,12 @@ function rollDawn(id, formula) {
 // ═══════════════════════════════════════════════════
 function save() {
   try { localStorage.setItem('g', JSON.stringify(G));
-    if (char) localStorage.setItem('ch', JSON.stringify(char));
-    if (lastXmlText) localStorage.setItem('xml', lastXmlText); } catch(e) {}
+    if (char) localStorage.setItem('ch', JSON.stringify(char)); } catch(e) {}
 }
 
 function loadSaved() {
   try {
     const ch = localStorage.getItem('ch'), g = localStorage.getItem('g');
-    lastXmlText = localStorage.getItem('xml') || null;
     if (ch) {
       char = JSON.parse(ch);
       if (g) {
@@ -3936,7 +3687,6 @@ function loadSaved() {
         if (!G.hidden) G.hidden = { abilities:{}, trackers:{} };
         if (!G.hidden.abilities) G.hidden.abilities = {};
         if (!G.hidden.trackers) G.hidden.trackers = {};
-        if (!G.equipped) G.equipped = {};
         if (!G.collapsed) G.collapsed = {};
         if (!G.triggerSel) G.triggerSel = {};
         if (!G.castLevel) G.castLevel = {};
@@ -3960,14 +3710,13 @@ function loadSaved() {
 function importXML(xmlText, opts) {
   opts = opts || {};
   try {
-    lastXmlText = xmlText;
     char = parseFC5eXML(xmlText);
     const allSectionKeys = ['action','bonus','reaction','trigger','suggestions','utility','passive','trackers','activeEffects','encounterState'];
     const collapsed = Object.fromEntries(allSectionKeys.map(k => [k, true]));
     G = { round:1, hp:char.hpCur, tempHp:0, actionUsed:false, bonusUsed:false,
           reactionUsed:false, reactionAvailable:false, lastUsedInSlot:{}, oncePerTurn:{}, trackers:{},
           collapsed, triggerSel:{}, castLevel:{}, poolAmt:{},
-          hidden:{ abilities:{}, trackers:{} }, equipped:{},
+          hidden:{ abilities:{}, trackers:{} },
           activeEffects:{},
           encounterState:{ numTargets:1, targetParalyzed:false, targetAsleep:false,
             targetProne:false, targetBlinded:false, targetConc:false, alliesInRange:0 },
