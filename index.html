@@ -295,6 +295,21 @@ html,body{height:100%;background:var(--bg);color:var(--text);
 .trash-restore:active{opacity:.6}
 .modal-foot{padding:10px 14px;border-top:1px solid var(--border)}
 
+/* Selector de personajes (openCharacterSwitcher) */
+.char-row{display:flex;align-items:center;gap:6px;background:var(--s2);
+  border:1px solid var(--border);border-radius:var(--r-sm);padding:9px 10px;margin-bottom:6px}
+.char-row.active{border-color:var(--blue-border);background:var(--blue-bg)}
+.char-row-info{flex:1;min-width:0;cursor:pointer}
+.char-row-name{font-size:.87rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.char-row-tag{font-size:.66rem;font-weight:600;color:var(--blue);background:var(--s1);
+  border-radius:6px;padding:1px 6px;margin-left:4px;vertical-align:middle}
+.char-row-meta{font-size:.73rem;color:var(--muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.char-row-btn{background:var(--s1);border:1px solid var(--border2);color:var(--muted);
+  width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:.85rem;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center}
+.char-row-btn:active{opacity:.6}
+.char-row-btn.danger{color:var(--red)}
+
 #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);
   background:var(--s3);border:1px solid var(--border2);color:var(--text);
   padding:9px 18px;border-radius:20px;font-size:.83rem;
@@ -443,7 +458,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);
     <code>Personaje → ··· → Exportar XML</code><br>
     luego comparte o selecciona el archivo aquí.
   </p>
-  <button class="btn-primary" onclick="document.getElementById('file-input').click()">
+  <button class="btn-primary" onclick="pickXmlFile(null)">
     Seleccionar XML de FC5e
   </button>
   <input type="file" id="file-input" accept=".xml,text/xml,application/xml">
@@ -452,7 +467,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);
 
 <div id="screen-tracker">
   <div class="header">
-    <button class="hdr-change" onclick="document.getElementById('file-input').click()" title="Cambiar personaje">⇄</button>
+    <button class="hdr-change" onclick="openCharacterSwitcher()" title="Cambiar de personaje">⇄</button>
     <div class="hdr-info">
       <div class="hdr-name" id="hdr-name">—</div>
       <div class="hdr-meta" id="hdr-meta">—</div>
@@ -468,6 +483,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);
 
 <div id="toast"></div>
 <div id="trash-modal"></div>
+<div id="characters-modal"></div>
 
 <div id="update-banner" class="update-banner">
   <span class="update-banner-text">🔄 Hay una nueva versión disponible</span>
@@ -494,20 +510,14 @@ function esc(s) {
 //  STATE
 // ═══════════════════════════════════════════════════
 let char = null;
-let G = { round:1, hp:null, tempHp:0, actionUsed:false, bonusUsed:false,
-  reactionUsed:false, reactionAvailable:false, lastUsedInSlot:{}, oncePerTurn:{}, trackers:{},
-  collapsed:{}, triggerSel:{}, castLevel:{}, poolAmt:{},
-  hidden:{ abilities:{}, trackers:{} }, equipped:{},
-  activeEffects:{}, encounterState:{ numTargets:1, targetParalyzed:false,
-    targetAsleep:false, targetProne:false, targetBlinded:false,
-    targetConc:false, alliesInRange:0 },
-  castTarget:{}, comboUsed:{}, lastSnapshot:null };
+let G = freshG(); // ver definición de freshG() en la sección PERSISTENCE
+let activeCharId = null; // id (IndexedDB) del personaje actualmente cargado
 
-// XML crudo del personaje importado — se cachea (memoria + localStorage)
-// para poder reparsear con parseFC5eXML(xmlText, G.equipped) cada vez que
-// se equipa/desequipa un ítem (ver toggleItemEquipped/reparseChar). Los
-// personajes guardados ANTES de esta función (sin xmlText en localStorage)
-// simplemente no podrán equipar/desequipar hasta reimportar su XML.
+// XML crudo del personaje activo — se cachea en memoria para poder
+// reparsear con parseFC5eXML(xmlText, G.equipped) cada vez que se
+// equipa/desequipa un ítem (ver toggleItemEquipped/reparseChar). Se
+// persiste junto con G en el registro IndexedDB del personaje (ver
+// sección PERSISTENCE) para poder guardar varios personajes en paralelo.
 let lastXmlText = null;
 
 // Maps populated on each render(), used by toggleDesc()
@@ -4002,85 +4012,261 @@ function rollDawn(id, formula) {
 }
 
 // ═══════════════════════════════════════════════════
-//  PERSISTENCE
+//  PERSISTENCE — IndexedDB, multi-personaje
 // ═══════════════════════════════════════════════════
-function save() {
-  try { localStorage.setItem('g', JSON.stringify(G));
-    if (char) localStorage.setItem('ch', JSON.stringify(char));
-    if (lastXmlText) localStorage.setItem('xml', lastXmlText); } catch(e) {}
+// Cada personaje es un registro { id, name, meta, xmlText, G, updatedAt }
+// en el object store `characters`. Se usa IndexedDB en vez de localStorage
+// porque un solo XML de FC5e puede pesar varios MB (Dorym real: 8.8MB) —
+// eso solo ya roza o supera la cuota típica de localStorage (5-10MB) para
+// UN personaje, así que localStorage no alcanza para guardar varios en
+// paralelo. `activeCharId` (qué personaje está abierto ahora mismo) se
+// guarda aparte en localStorage: es un string chico y hace falta poder
+// leerlo en el arranque antes de abrir la conexión a IndexedDB.
+const DB_NAME = 'ctdb', DB_VERSION = 1, STORE = 'characters';
+let _dbPromise = null;
+function openDB() {
+  if (_dbPromise) return _dbPromise;
+  _dbPromise = new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = () => {
+      if (!req.result.objectStoreNames.contains(STORE)) {
+        req.result.createObjectStore(STORE, { keyPath:'id' });
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+  return _dbPromise;
+}
+function dbPutCharacter(record) {
+  return openDB().then(db => new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readwrite');
+    tx.objectStore(STORE).put(record);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  }));
+}
+function dbGetCharacter(id) {
+  return openDB().then(db => new Promise((resolve, reject) => {
+    const req = db.transaction(STORE, 'readonly').objectStore(STORE).get(id);
+    req.onsuccess = () => resolve(req.result || null);
+    req.onerror = () => reject(req.error);
+  }));
+}
+function dbGetAllCharacters() {
+  return openDB().then(db => new Promise((resolve, reject) => {
+    const req = db.transaction(STORE, 'readonly').objectStore(STORE).getAll();
+    req.onsuccess = () => resolve(req.result || []);
+    req.onerror = () => reject(req.error);
+  }));
+}
+function dbDeleteCharacter(id) {
+  return openDB().then(db => new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readwrite');
+    tx.objectStore(STORE).delete(id);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  }));
+}
+function genId() { return 'c_' + Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
+
+// Estado de sesión "en blanco" para un personaje recién cargado. Todas las
+// secciones arrancan colapsadas (igual que siempre hizo importXML).
+function freshG() {
+  const allSectionKeys = ['action','bonus','reaction','trigger','suggestions','utility','passive','trackers','activeEffects','encounterState'];
+  return { round:1, hp:null, tempHp:0, actionUsed:false, bonusUsed:false,
+    reactionUsed:false, reactionAvailable:false, lastUsedInSlot:{}, oncePerTurn:{}, trackers:{},
+    collapsed: Object.fromEntries(allSectionKeys.map(k => [k, true])),
+    triggerSel:{}, castLevel:{}, poolAmt:{},
+    hidden:{ abilities:{}, trackers:{} }, equipped:{},
+    activeEffects:{},
+    encounterState:{ numTargets:1, targetParalyzed:false, targetAsleep:false,
+      targetProne:false, targetBlinded:false, targetConc:false, alliesInRange:0 },
+    castTarget:{}, comboUsed:{}, lastSnapshot:null };
+}
+// Rellena con default cualquier campo que falte en un G cargado de un
+// registro viejo (personajes guardados antes de agregarse alguna clave).
+function ensureGDefaults() {
+  const fresh = freshG();
+  for (const k in fresh) if (G[k] === undefined) G[k] = fresh[k];
+  if (!G.hidden.abilities) G.hidden.abilities = {};
+  if (!G.hidden.trackers) G.hidden.trackers = {};
 }
 
-function loadSaved() {
+async function save() {
+  if (!char || !activeCharId) return;
   try {
-    const ch = localStorage.getItem('ch'), g = localStorage.getItem('g');
-    lastXmlText = localStorage.getItem('xml') || null;
-    if (ch) {
-      char = JSON.parse(ch);
-      if (g) {
-        const saved = JSON.parse(g);
-        Object.assign(G, saved);
-        if (!G.hidden) G.hidden = { abilities:{}, trackers:{} };
-        if (!G.hidden.abilities) G.hidden.abilities = {};
-        if (!G.hidden.trackers) G.hidden.trackers = {};
-        if (!G.equipped) G.equipped = {};
-        if (!G.collapsed) G.collapsed = {};
-        if (!G.triggerSel) G.triggerSel = {};
-        if (!G.castLevel) G.castLevel = {};
-        if (!G.poolAmt) G.poolAmt = {};
-        if (!G.comboUsed) G.comboUsed = {};
-        if (G.lastSnapshot === undefined) G.lastSnapshot = null;
-        if (!G.activeEffects) G.activeEffects = {};
-        if (!G.encounterState) G.encounterState = { numTargets:1, targetParalyzed:false, targetAsleep:false, targetProne:false, targetBlinded:false, targetConc:false, alliesInRange:0 };
-        if (!G.castTarget) G.castTarget = {};
-      }
-      return true;
-    }
+    await dbPutCharacter({
+      id: activeCharId, name: char.name, meta: `${char.cName} · ${char.raceName}`,
+      xmlText: lastXmlText, G, updatedAt: Date.now()
+    });
+    localStorage.setItem('activeCharId', activeCharId);
   } catch(e) {}
-  return false;
+}
+
+async function loadActiveCharacter() {
+  const id = localStorage.getItem('activeCharId');
+  if (!id) return false;
+  try {
+    const rec = await dbGetCharacter(id);
+    if (!rec) return false;
+    activeCharId = rec.id;
+    lastXmlText = rec.xmlText;
+    G = rec.G || freshG();
+    ensureGDefaults();
+    char = parseFC5eXML(rec.xmlText, G.equipped);
+    return true;
+  } catch(e) { return false; }
+}
+
+// Migra el guardado de una sola ranura (localStorage: 'ch'/'g'/'xml', de
+// antes de esta función) a un registro IndexedDB. Corre una sola vez: si
+// no encuentra esas claves viejas, no hace nada.
+async function migrateLegacyStorage() {
+  try {
+    const legacyXml = localStorage.getItem('xml'), legacyCh = localStorage.getItem('ch');
+    if (!legacyXml || !legacyCh) return;
+    const legacyChar = JSON.parse(legacyCh);
+    const legacyG = JSON.parse(localStorage.getItem('g') || '{}');
+    const id = genId();
+    await dbPutCharacter({
+      id, name: legacyChar.name, meta: `${legacyChar.cName} · ${legacyChar.raceName}`,
+      xmlText: legacyXml, G: legacyG, updatedAt: Date.now()
+    });
+    localStorage.removeItem('ch'); localStorage.removeItem('g'); localStorage.removeItem('xml');
+    localStorage.setItem('activeCharId', id);
+  } catch(e) {}
 }
 
 // ═══════════════════════════════════════════════════
 //  IMPORT
 // ═══════════════════════════════════════════════════
-
-function importXML(xmlText, opts) {
+// targetId ausente → crea un personaje nuevo (import normal o compartido
+// desde FC5e). targetId presente → reimporta el XML en una ranura ya
+// existente (p.ej. tras subir de nivel en FC5e desde el selector de
+// personajes): conserva preferencias de UI y el overlay de equipo de esa
+// ranura; el resto del estado de combate (turno/ronda/HP actual/efectos)
+// arranca de cero porque la ficha reimportada puede traer niveles u
+// objetos nuevos que ya no coinciden con ese estado.
+async function importXML(xmlText, opts) {
   opts = opts || {};
   try {
+    const isReimport = !!opts.targetId;
+    const id = opts.targetId || genId();
+    const G_new = freshG();
+    if (isReimport) {
+      const prev = await dbGetCharacter(id);
+      if (prev && prev.G) {
+        G_new.collapsed = prev.G.collapsed || G_new.collapsed;
+        G_new.hidden = prev.G.hidden || G_new.hidden;
+        G_new.equipped = prev.G.equipped || {};
+      }
+    }
     lastXmlText = xmlText;
-    char = parseFC5eXML(xmlText);
-    const allSectionKeys = ['action','bonus','reaction','trigger','suggestions','utility','passive','trackers','activeEffects','encounterState'];
-    const collapsed = Object.fromEntries(allSectionKeys.map(k => [k, true]));
-    G = { round:1, hp:char.hpCur, tempHp:0, actionUsed:false, bonusUsed:false,
-          reactionUsed:false, reactionAvailable:false, lastUsedInSlot:{}, oncePerTurn:{}, trackers:{},
-          collapsed, triggerSel:{}, castLevel:{}, poolAmt:{},
-          hidden:{ abilities:{}, trackers:{} }, equipped:{},
-          activeEffects:{},
-          encounterState:{ numTargets:1, targetParalyzed:false, targetAsleep:false,
-            targetProne:false, targetBlinded:false, targetConc:false, alliesInRange:0 },
-          castTarget:{}, comboUsed:{}, lastSnapshot:null };
-    char.trackers.forEach(t => { G.trackers[t.id] = t.max; });
-    save();
+    char = parseFC5eXML(xmlText, G_new.equipped);
+    char.trackers.forEach(t => { G_new.trackers[t.id] = t.max; });
+    G_new.hp = char.hpCur;
+    G = G_new;
+    activeCharId = id;
+    await save();
     document.getElementById('screen-import').style.display  = 'none';
     document.getElementById('screen-tracker').style.display = 'flex';
+    closeCharacterSwitcher();
     render();
-    toast(opts.fromShare ? `${char.name} — personaje reemplazado` : `${char.name} cargado`);
+    toast(isReimport ? `${char.name} — XML actualizado`
+      : opts.fromShare ? `${char.name} — cargado desde FC5e`
+      : `${char.name} cargado`);
   } catch(e) { alert('Error al leer el XML: ' + e.message); }
 }
 
+// _fileImportTargetId viaja del botón que abrió el file-picker (import
+// nuevo vs. reimportar una ranura puntual) hasta su listener 'change'.
+let _fileImportTargetId = null;
+function pickXmlFile(targetId) {
+  _fileImportTargetId = targetId || null;
+  document.getElementById('file-input').click();
+}
 document.getElementById('file-input').addEventListener('change', e => {
   const f = e.target.files[0]; if (!f) return;
+  const targetId = _fileImportTargetId; _fileImportTargetId = null;
   const r = new FileReader();
-  r.onload = ev => importXML(ev.target.result);
+  r.onload = ev => importXML(ev.target.result, targetId ? { targetId } : {});
   r.onerror = () => alert('No se pudo leer el archivo');
   r.readAsText(f, 'UTF-8');
   e.target.value = '';
 });
 
 // ═══════════════════════════════════════════════════
+//  CHARACTER SWITCHER
+// ═══════════════════════════════════════════════════
+async function openCharacterSwitcher() {
+  const list = await dbGetAllCharacters();
+  list.sort((a,b) => (b.updatedAt||0) - (a.updatedAt||0));
+  const rows = list.map(c => `
+    <div class="char-row ${c.id===activeCharId ? 'active':''}">
+      <div class="char-row-info" onclick="selectCharacter('${c.id}')">
+        <div class="char-row-name">${esc(c.name)}${c.id===activeCharId ? ' <span class="char-row-tag">actual</span>' : ''}</div>
+        <div class="char-row-meta">${esc(c.meta || '')}</div>
+      </div>
+      <button class="char-row-btn" onclick="pickXmlFile('${c.id}')" title="Reimportar XML (p.ej. tras subir de nivel en FC5e)">⤓</button>
+      <button class="char-row-btn danger" onclick="deleteCharacter('${c.id}')" title="Eliminar">🗑</button>
+    </div>`).join('');
+  document.getElementById('characters-modal').innerHTML = `
+    <div class="modal-overlay" onclick="if(event.target===this)closeCharacterSwitcher()">
+      <div class="modal-sheet">
+        <div class="modal-head">
+          <span class="modal-title">👥 Personajes</span>
+          <button class="modal-close" onclick="closeCharacterSwitcher()">✕</button>
+        </div>
+        <div class="modal-body">${rows || '<div class="modal-empty">No hay personajes guardados</div>'}</div>
+        <div class="modal-foot">
+          <button class="footer-btn" onclick="pickXmlFile(null)">+ Importar personaje nuevo</button>
+        </div>
+      </div>
+    </div>`;
+}
+function closeCharacterSwitcher() {
+  const el = document.getElementById('characters-modal');
+  if (el) el.innerHTML = '';
+}
+async function selectCharacter(id) {
+  if (id === activeCharId) { closeCharacterSwitcher(); return; }
+  const rec = await dbGetCharacter(id);
+  if (!rec) { toast('No se pudo cargar ese personaje'); return; }
+  activeCharId = rec.id;
+  lastXmlText = rec.xmlText;
+  G = rec.G || freshG();
+  ensureGDefaults();
+  char = parseFC5eXML(rec.xmlText, G.equipped);
+  localStorage.setItem('activeCharId', activeCharId);
+  closeCharacterSwitcher();
+  render();
+  toast(`${char.name} cargado`);
+}
+async function deleteCharacter(id) {
+  const rec = await dbGetCharacter(id);
+  if (!rec) return;
+  if (!confirm(`¿Eliminar a "${rec.name}"? Esta acción no se puede deshacer.`)) return;
+  await dbDeleteCharacter(id);
+  if (id !== activeCharId) { openCharacterSwitcher(); return; }
+  const remaining = await dbGetAllCharacters();
+  if (remaining.length) {
+    remaining.sort((a,b) => (b.updatedAt||0) - (a.updatedAt||0));
+    await selectCharacter(remaining[0].id);
+  } else {
+    activeCharId = null; char = null; lastXmlText = null;
+    localStorage.removeItem('activeCharId');
+    closeCharacterSwitcher();
+    document.getElementById('screen-tracker').style.display = 'none';
+    document.getElementById('screen-import').style.display  = 'flex';
+  }
+}
+
+// ═══════════════════════════════════════════════════
 //  SHARE TARGET
 // ═══════════════════════════════════════════════════
 // Lee el archivo compartido desde FC5e (caché share-v1 → pendiente).
-// Corre ANTES que loadSaved() para reemplazar personaje ya cargado.
+// Corre ANTES que loadActiveCharacter() — ver comentario en init().
 // ── Debug panel (solo en error) ──────────────────────────────────────
 // Acumula logs en memoria; solo crea el panel visible si dbgError() es
 // llamado. En éxito el panel no aparece en absoluto.
@@ -4262,8 +4448,10 @@ function dismissUpdateBanner() {
   if (updateAvailable) document.getElementById('update-pill').classList.add('show');
 }
 function reloadForUpdate() {
-  // El estado del personaje ya está en localStorage (save() se llama tras
-  // cada acción), así que recargar no pierde el combate en curso.
+  // El estado del personaje ya está guardado en IndexedDB (save() se llama
+  // tras cada acción), así que recargar no pierde el combate en curso. La
+  // escritura es asíncrona, pero para cuando el usuario llega a tocar este
+  // botón la última acción ya tuvo tiempo de sobra para persistirse.
   location.reload();
 }
 
@@ -4296,11 +4484,16 @@ if ('serviceWorker' in navigator) {
 //  INIT
 // ═══════════════════════════════════════════════════
 (async function init() {
+  // Migra el guardado de una sola ranura de versiones anteriores (si
+  // existe) a un registro IndexedDB, antes de cualquier otra cosa.
+  await migrateLegacyStorage();
+
   // El archivo compartido SIEMPRE tiene prioridad — incluso sobre un
-  // personaje ya cargado y guardado (ver comentario en processSharedFile).
+  // personaje ya activo (ver comentario en processSharedFile). Crea un
+  // personaje nuevo y lo deja como activo.
   if (await processSharedFile()) return;
 
-  if (loadSaved()) {
+  if (await loadActiveCharacter()) {
     document.getElementById('screen-tracker').style.display = 'flex';
     render(); return;
   }
