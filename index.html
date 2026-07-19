@@ -398,6 +398,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);
 .ac-val{font-size:1.4rem;font-weight:800;color:var(--blue);line-height:1}
 .ac-label{font-size:.75rem;color:var(--muted)}
 .ac-bonus{color:var(--amber);font-size:.75rem;font-weight:700}
+.ac-init{font-size:.75rem;color:var(--muted);margin-left:8px}
 .ac-prof{font-size:.73rem;color:var(--muted)}
 
 /* ── Dawn recharge button ── */
@@ -675,8 +676,8 @@ function parseFC5eXML(xml, equipOverrides) {
   if (!ch) throw new Error('No se encontró elemento character');
 
   const name   = $(ch, 'name').split('||')[0].trim();
-  const hpMax  = parseInt($(ch, 'hpMax'))     || 10;
-  const hpCur  = parseInt($(ch, 'hpCurrent')) || hpMax;
+  let hpMax    = parseInt($(ch, 'hpMax')) || 10; // ajustado más abajo con bonos type=15 (ver scanGenericMods)
+  let hpCur    = parseInt($(ch, 'hpCurrent')); // si <hpCurrent> está ausente, cae a hpMax ya final (ver más abajo)
 
   // ── Classes (multiclass support) ───────────────────
   const classEls  = $$(ch, 'class');
@@ -848,8 +849,19 @@ function parseFC5eXML(xml, equipOverrides) {
     const slot = parseInt($(el, 'slot')) || 0;
     const ac = parseInt($(el, 'ac')) || 0;
     const damage1H = $(el, 'damage1H');
-    const mods = $$(el, 'mod').map(md => ({
-      category: $(md, 'category'),
+    // Solo se quedan los <mod> de categoría "Bonus" (ausente/"0") — el
+    // resto (category 1/2/3/4: puntaje/modificador de característica,
+    // salvación, habilidad) ya lo lee `scanGenericMods` por separado más
+    // abajo, con su propio manejo por categoría. Sin este filtro, un
+    // <mod category="4"><type>10</type> (bono de habilidad #10) se leía
+    // como si fuera <type>10</type> de "Bonus" (CA) porque el código de
+    // más abajo (armadura/CA, CD/ataque de conjuro, ataque/daño de arma)
+    // solo mira `type`, nunca `category` — confirmado con el ítem de
+    // prueba de Rhyo, que infla la CA en +1 de más si no se filtra acá.
+    const mods = $$(el, 'mod').filter(md => {
+      const catRaw = $(md, 'category');
+      return catRaw === '' || catRaw === '0';
+    }).map(md => ({
       type:  parseInt($(md, 'type')) || 0,
       value: $(md, 'value') !== '' ? parseInt($(md, 'value')) : null
     }));
@@ -931,33 +943,51 @@ function parseFC5eXML(xml, equipOverrides) {
   // 3 = Tirada de Salvación (<type>=0-5, ábaco FUE..CAR); 4 = Habilidad
   // (<type>=0-17, +100 = id absoluto de SKILL_LIST). <category>=1 ya se
   // trató arriba (puntuación de característica).
-  // <category>=2 ("Modificador de Característica") apareció una sola vez
-  // en los 6 personajes de prueba (Brazos del Yo Astral de Rhyo, en una
-  // versión anterior del XML) y describía un mecanismo CONDICIONAL —
-  // sustituir SAB por FUE mientras ese efecto está activo — no un bono
-  // permanente. Sumarlo a ciegas corrompería puntuaciones ya validadas
-  // (ver tabla §4), así que NO se auto-aplica; solo queda registrado para
-  // revisión manual si aparece. Esta es la decisión final, no un
-  // pendiente: la sustitución condicional real de Brazos del Yo Astral ya
-  // está cubierta por el sistema de efectos (`astral_arms_active`, ver
-  // §3.3), que sabe CUÁNDO aplica la condición — algo que un `<mod>`
-  // category=2 sumado ciegamente nunca podría saber.
+  // <category>=2 ("Modificador de Característica") SÍ se auto-aplica —
+  // confirmado con el ítem de prueba "Prueba De Modificadores" de Rhyo,
+  // con valores esperados para las 6 características provistos por el
+  // usuario: es un bono directo al MODIFICADOR ya calculado (no al
+  // puntaje — eso es category=1), acumulable con category=1. Se aplica
+  // sumándolo a `mods[ability]` justo después de calcular los
+  // modificadores base (ver `abilityModBonus`/`abilityModProfFlag` más
+  // abajo), así llega en cascada a habilidades, salvaciones, iniciativa,
+  // CD/ataque de conjuro y ataques. Sin `<value>` (visto en Inteligencia
+  // del ítem de prueba) significa "sumar el bonificador de competencia
+  // actual" en vez de un número fijo. El caso que originalmente hizo
+  // pensar que esta categoría NO debía auto-aplicarse (Brazos del Yo
+  // Astral de Rhyo, con `category=2` a mano como workaround del usuario
+  // en FC5e) era un malentendido — ver CONTEXTO_PROYECTO.md §2.8.
+  //
   // Subtipos de "Bonus" (categoría 0): son exactamente 16, <type>=0-15,
-  // confirmado por el propio menú de FC5e (ver CONTEXTO_PROYECTO.md §2.8
-  // para la lista completa con nivel de confianza de cada uno — varios
-  // vía dato real, un par por posición en el menú sin caso real que lo
-  // desambigüe todavía). type=16/17 NO son de esta categoría — son
-  // `category=4` (Habilidad), donde 0-17 identifica CUÁL habilidad, no
-  // un subtipo de bono (ver arriba). type=15 (puntos de golpe) SÍ está
-  // confirmado (Draconic Resilience de Dorym) pero NUNCA se suma a
-  // hpMax — decisión confirmada empíricamente (no solo por cautela):
-  // se probó agregando un ítem con `mod type=15 value=1` a Rhyo y
-  // `<hpMax>` exportado por FC5e NO cambió (se quedó en 77) — o sea que
-  // FC5e no recalcula `<hpMax>` en base a los mods del personaje, es un
-  // campo que el usuario fija a mano en la app. Sumar type=15 nosotros
-  // encima de un `<hpMax>` que ya es la cifra final duplicaría el bono
-  // apenas el jugador lo reflejara en su hoja. Se sigue registrando en
-  // consola solo como diagnóstico informativo.
+  // todos confirmados — 12 con datos reales/ítems de prueba dedicados
+  // (el usuario creó un ítem o rasgo por separado para cada uno de los 4
+  // que faltaban: Hit Points, Saving Throws, Initiative, Passive Wisdom,
+  // Unarmored Armor Class — ver CONTEXTO_PROYECTO.md §2.8 para el mapeo
+  // completo). type=16/17 NO son de esta categoría — son `category=4`
+  // (Habilidad), donde 0-17 identifica CUÁL habilidad, no un subtipo de
+  // bono.
+  //   9  Hit Points              → se suma a hpMax (`hpBonusFlat`)
+  //   11 Saving Throws           → bono plano a las 6 salvaciones
+  //                                (`savesBonusFlat`, distinto del bono
+  //                                por salvación individual de category=3)
+  //   12 Initiative              → `initiativeBonusFlat`
+  //   14 Passive Wisdom          → `passiveWisdomBonusFlat`
+  //   15 Unarmored Armor Class   → `unarmoredACBonusFlat`, solo se suma
+  //                                si el personaje termina usando una
+  //                                fórmula de CA sin armadura (ver
+  //                                cálculo de CA) — NO es Hit Points,
+  //                                pese a que una lectura anterior de
+  //                                este documento asumió eso a partir de
+  //                                Draconic Resilience (el `<mod>` de esa
+  //                                dote resultó ser la parte de CA de
+  //                                "13 + tu modificador de Destreza", no
+  //                                la parte de PG del mismo rasgo).
+  // `hpMax` NUNCA se suma a ciegas más allá de lo confirmado arriba —
+  // sigue siendo cierto que `<hpMax>` exportado por FC5e no se
+  // recalcula solo por agregar un ítem (se comprobó con Rhyo), así que
+  // es la app la que tiene que sumar `type=9` dinámicamente encima de
+  // esa base al equipar/desequipar, igual que ya se hacía con velocidad
+  // y CA.
   //
   // Los tipos 1/2/3/4/5/6/7/8/10 en ÍTEMS ya se leen (o deberían leerse)
   // por rutas separadas más abajo: CA de armadura/escudo/accesorio, CD y
@@ -978,8 +1008,15 @@ function parseFC5eXML(xml, equipOverrides) {
   const bonuses = { weaponAtk:0, weaponDmg:0, meleeAtk:0, meleeDmg:0, rangedAtk:0, rangedDmg:0,
                      spellDcBonus:0, spellAtkBonus:0, acBonus:0, speedBonus:0 };
   const acModFeats = new Set();  // feats con CA vía <mod> numérico — flatFeatACBonus() los excluye para no duplicar
-  const hpModsFound = [];        // type=15 detectados pero NO aplicados (ver nota arriba)
+  const hpModsFound = [];        // type=15 detectados — se suman a hpMax (ver nota arriba) y quedan aquí solo para el log
   let profBonusFlat = 0;         // type=0 ("Bonificador por Competencia") — sube `prof` directo, ver nota arriba
+  let hpBonusFlat = 0;           // type=9 ("Hit Points") — se suma a hpMax, ver nota arriba
+  let savesBonusFlat = 0;        // type=11 ("Saving Throws") — bono plano a las 6 salvaciones, distinto del <category>3</category> por salvación individual
+  let initiativeBonusFlat = 0;   // type=12 ("Initiative")
+  let passiveWisdomBonusFlat = 0; // type=14 ("Passive Wisdom") — bono a Percepción Pasiva
+  let unarmoredACBonusFlat = 0;  // type=15 ("Unarmored Armor Class") — solo aplica dentro de la rama sin armadura, ver cálculo de CA
+  const abilityModBonus = [0,0,0,0,0,0];       // category=2 con <value>: bono directo al MODIFICADOR (no al puntaje) de esa característica, idx 0-5 = FUE-CAR
+  const abilityModProfFlag = [false,false,false,false,false,false]; // category=2 SIN <value>: sumar el bonificador de competencia en vez de un número fijo (ver nota abajo)
   const saveMods = {};           // idx 0-5 -> { flat, profGrant }
   const skillMods = {};          // id 100-117 -> { flat, profGrant }
   const unknownMods = [];        // category/type sin mapeo confirmado — solo diagnóstico en consola
@@ -994,8 +1031,12 @@ function parseFC5eXML(xml, equipOverrides) {
       if (catRaw === '' || catRaw === '0') {
         if (val === null) return; // "Bonus" sin valor = placeholder/flag del ítem, no un bono real (ver Espina/Pico de Guerra)
         if (isItem && ITEM_HANDLED_TYPES.has(type)) return; // ya cubierto por otra ruta
-        if (type === 15) { hpModsFound.push({ value: val, source: sourceLabel }); return; }
-        if (type === 0) { profBonusFlat += val; return; } // bono directo al bonificador de competencia
+        if (type === 9)  { hpBonusFlat += val; hpModsFound.push({ value: val, source: sourceLabel }); return; }
+        if (type === 0)  { profBonusFlat += val; return; } // bono directo al bonificador de competencia
+        if (type === 11) { savesBonusFlat += val; return; } // bono plano a TODAS las salvaciones (a diferencia de category=3, que es por salvación)
+        if (type === 12) { initiativeBonusFlat += val; return; }
+        if (type === 14) { passiveWisdomBonusFlat += val; return; }
+        if (type === 15) { unarmoredACBonusFlat += val; return; } // solo se aplica si el personaje termina usando una fórmula de CA sin armadura, ver cálculo de CA
         const key = BONUS_TYPE_KEYS[type];
         if (key) {
           bonuses[key] += val;
@@ -1015,7 +1056,17 @@ function parseFC5eXML(xml, equipOverrides) {
           if (val === null) skillMods[skillId].profGrant = true; else skillMods[skillId].flat += val;
         }
       } else if (catRaw === '2') {
-        unknownMods.push({ category:'ability-modifier (no aplicado, ver nota)', type, value:val, source:sourceLabel });
+        // Bono directo al MODIFICADOR de característica (no al puntaje —
+        // eso es category=1). Confirmado con el ítem de prueba de Rhyo
+        // "Prueba De Modificadores": category=2 sin <value> (visto en
+        // Inteligencia) suma el bonificador de competencia en vez de un
+        // número fijo — mismo patrón "sin valor = comportamiento especial"
+        // que profGrant en categorías 3/4, pero acá el "especial" es
+        // "sumar prof" en vez de "otorgar competencia".
+        if (type >= 0 && type <= 5) {
+          if (val === null) abilityModProfFlag[type] = true;
+          else abilityModBonus[type] += val;
+        }
       } else if (catRaw !== '1') {
         unknownMods.push({ category:catRaw, type, value:val, source:sourceLabel });
       }
@@ -1034,12 +1085,19 @@ function parseFC5eXML(xml, equipOverrides) {
   // CD de conjuro/ataques más abajo, para que se refleje en cascada en
   // todo lo que usa `prof` — no solo en un subconjunto.
   prof += profBonusFlat;
+  hpMax += hpBonusFlat;
+  if (Number.isNaN(hpCur)) hpCur = hpMax; // <hpCurrent> ausente en el XML
+
+  // category=2 sin <value> ("sumar competencia" en vez de un número fijo)
+  // se resuelve recién acá porque necesita el `prof` YA final (con su
+  // propio bono type=0 incluido, si lo hubiera).
+  abilityModProfFlag.forEach((flag, i) => { if (flag) abilityModBonus[i] += prof; });
 
   if (unknownMods.length) {
     console.warn(`[FC5e] Modifiers sin mapeo confirmado en "${name}" — revisar empíricamente:`, unknownMods);
   }
   if (hpModsFound.length) {
-    console.info(`[FC5e] Bonos de PG (type=15) detectados en "${name}" pero no sumados a hpMax (ver nota en el código) — verificar manualmente:`, hpModsFound);
+    console.info(`[FC5e] Bonos de PG (type=9, "Hit Points") detectados en "${name}" y sumados a hpMax:`, hpModsFound);
   }
 
   // ── Movimiento disponible en el turno ────────────────────────────
@@ -1056,6 +1114,7 @@ function parseFC5eXML(xml, equipOverrides) {
   const [str, dex, con, int_, wis, cha] = scores;
   const m = s => Math.floor((s - 10) / 2);
   const mods = { str:m(str), dex:m(dex), con:m(con), int:m(int_), wis:m(wis), cha:m(cha) };
+  ABILITY_KEYS.forEach((k, i) => { mods[k] += abilityModBonus[i]; });
 
   // ── Skill proficiencies ────────────────────────────────────────────
   // FC5e codifica las competencias de habilidad como <proficiency>N</proficiency>
@@ -1126,7 +1185,7 @@ function parseFC5eXML(xml, equipOverrides) {
   const saves = SAVE_LIST.map(s => {
     const sm = saveMods[s.id];
     const proficient = saveProfIds.has(s.id);
-    const flatBonus = sm ? sm.flat : 0;
+    const flatBonus = (sm ? sm.flat : 0) + savesBonusFlat;
     return {
       ...s,
       proficient,
@@ -1170,8 +1229,12 @@ function parseFC5eXML(xml, equipOverrides) {
   } else {
     // Fórmulas alternativas de CA sin armadura (Defensa Sin Armadura del
     // monje, Armadura Natural racial, pactos/patrones homebrew, etc.). Si
-    // hay varias disponibles, se usa la que dé más CA.
-    computedAC = Math.max(10 + dexMod, ...parseUnarmoredACFormulas(allFeats, mods));
+    // hay varias disponibles, se usa la que dé más CA. `unarmoredACBonusFlat`
+    // (type=15, "Unarmored Armor Class" en el menú de FC5e) se suma encima
+    // de la que gane — solo en esta rama, nunca si el personaje termina
+    // usando una armadura física (confirmado con el rasgo de prueba
+    // "Habilita unarmored defense (dexterity)" del personaje de nivel 1).
+    computedAC = Math.max(10 + dexMod, ...parseUnarmoredACFormulas(allFeats, mods)) + unarmoredACBonusFlat;
   }
   computedAC += shieldAC + flatItemACBonus + flatFeatACBonus(allFeats, acModFeats) + bonuses.acBonus;
 
@@ -1276,7 +1339,20 @@ function parseFC5eXML(xml, equipOverrides) {
   // la sección de Inventario y el toggle de equipar/desequipar.
   const items = allItems.map(({ el, ...pub }) => pub);
 
-  return { name, hpMax, hpCur, cName, cLvl:totalLevel, classInfo, raceName, prof, mods, scores, skills, saves, trackers, abilities, spellDC, maxSpellLevel, ac:computedAC, speed, bonuses, items };
+  // ── Iniciativa ──────────────────────────────────────────────────
+  // Base = modificador de Destreza + bono universal type=12 ("Initiative"
+  // en el menú de FC5e — confirmado con el ítem de prueba dedicado).
+  const initiative = mods.dex + initiativeBonusFlat;
+
+  // ── Percepción Pasiva ────────────────────────────────────────────
+  // 10 + modificador de Percepción (ya incluye competencia y cualquier
+  // bono de habilidad de category=4) + bono universal type=14 ("Passive
+  // Wisdom" en el menú de FC5e — confirmado con el ítem de prueba
+  // dedicado).
+  const perceptionSkill = skills.find(s => s.key === 'perception');
+  const passiveWisdom = 10 + (perceptionSkill ? perceptionSkill.mod : mods.wis) + passiveWisdomBonusFlat;
+
+  return { name, hpMax, hpCur, cName, cLvl:totalLevel, classInfo, raceName, prof, mods, scores, skills, saves, trackers, abilities, spellDC, maxSpellLevel, ac:computedAC, speed, initiative, passiveWisdom, bonuses, items };
 }
 
 // ── Classify a single ability text ──────────────────
@@ -2281,6 +2357,8 @@ function render() {
     <span class="ac-shield">🛡️</span>
     <span class="ac-val">${displayAC}</span>
     <span class="ac-label">CA${acBonus > 0 ? ` <span class="ac-bonus">+${acBonus}</span>` : ''}</span>
+    <span class="ac-init" title="Iniciativa">🎲 ${char.initiative >= 0 ? '+' : ''}${char.initiative}</span>
+    <span class="ac-init" title="Percepción Pasiva">👁️ ${char.passiveWisdom}</span>
     <span class="ac-prof" style="margin-left:auto">+${char.prof} comp.</span>
   </div>`;
 
