@@ -310,6 +310,23 @@ html,body{height:100%;background:var(--bg);color:var(--text);
 .char-row-btn:active{opacity:.6}
 .char-row-btn.danger{color:var(--red)}
 
+/* Editor de ficha (openEditor: puntuaciones/HP — §3.9) */
+.editable-lp{cursor:pointer;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.editable-lp.lp-active{opacity:.5}
+.editor-field-label{display:block;font-size:.73rem;color:var(--muted);margin-bottom:4px}
+.editor-input{width:100%;background:var(--s2);border:1px solid var(--border2);color:var(--text);
+  border-radius:var(--r-sm);padding:9px 10px;font-size:1.05rem;font-weight:700;text-align:center;
+  margin-bottom:2px;box-sizing:border-box}
+.editor-hint{font-size:.7rem;color:var(--hint);margin-bottom:10px}
+.editor-total-row{font-size:.85rem;margin:10px 0 2px;padding-top:8px;
+  border-top:1px dashed var(--border2)}
+.editor-subhead{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
+  color:var(--muted);margin:10px 0 4px}
+.modal-foot-row{display:flex;gap:8px;padding:10px 14px;border-top:1px solid var(--border)}
+.modal-foot-row .footer-btn{margin-top:0;flex:1}
+.footer-btn.primary{background:var(--blue-bg);border-color:var(--blue-border);
+  color:var(--blue);font-weight:600}
+
 #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);
   background:var(--s3);border:1px solid var(--border2);color:var(--text);
   padding:9px 18px;border-radius:20px;font-size:.83rem;
@@ -484,6 +501,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);
 <div id="toast"></div>
 <div id="trash-modal"></div>
 <div id="characters-modal"></div>
+<div id="editor-modal"></div>
 
 <div id="update-banner" class="update-banner">
   <span class="update-banner-text">🔄 Hay una nueva versión disponible</span>
@@ -933,18 +951,24 @@ function parseFC5eXML(xml, equipOverrides) {
   // directos de los elementos ya curados arriba (allFeats, classEls, etc.).
   const directMods = el => el ? [...el.children].filter(c => c.tagName.toLowerCase() === 'mod') : [];
   const abilityBonus = [0, 0, 0, 0, 0, 0];
-  const addAbilityBonus = el => directMods(el).forEach(md => {
+  // Traza de origen por característica — alimenta el desglose que muestra
+  // el editor de puntuaciones (§3.9): qué aporta cada bono al total.
+  const abilityBonusBreakdown = [[], [], [], [], [], []];
+  const addAbilityBonus = (el, sourceLabel) => directMods(el).forEach(md => {
     if ($(md, 'category') !== '1') return;
     const idx = parseInt($(md, 'type')) || 0;
     const val = parseInt($(md, 'value')) || 0;
-    if (idx >= 0 && idx <= 5) abilityBonus[idx] += val;
+    if (idx >= 0 && idx <= 5 && val !== 0) {
+      abilityBonus[idx] += val;
+      abilityBonusBreakdown[idx].push({ source: sourceLabel, value: val });
+    }
   });
-  addAbilityBonus(ch.querySelector('race'));
-  addAbilityBonus(ch.querySelector('background'));
-  classEls.forEach(addAbilityBonus);
-  allFeats.forEach(f => addAbilityBonus(f.el));
-  charFeats.forEach(f => addAbilityBonus(f.el)); // dotes a nivel de personaje
-  allItems.forEach(it => { if (it.equipped) addAbilityBonus(it.el); });
+  addAbilityBonus(ch.querySelector('race'), raceName || 'raza');
+  addAbilityBonus(ch.querySelector('background'), 'trasfondo');
+  classEls.forEach(c => addAbilityBonus(c, $(c, 'name') || 'clase'));
+  allFeats.forEach(f => addAbilityBonus(f.el, f.name));
+  charFeats.forEach(f => addAbilityBonus(f.el, f.name)); // dotes a nivel de personaje
+  allItems.forEach(it => { if (it.equipped) addAbilityBonus(it.el, it.name); });
 
   // ── Modifiers genéricos de FC5e (bonos más allá de puntuación de
   // característica) — ver CONTEXTO_PROYECTO.md §2.8 para el mapeo
@@ -1026,6 +1050,7 @@ function parseFC5eXML(xml, equipOverrides) {
   let passiveWisdomBonusFlat = 0; // type=14 ("Passive Wisdom") — bono a Percepción Pasiva
   let unarmoredACBonusFlat = 0;  // type=15 ("Unarmored Armor Class") — solo aplica dentro de la rama sin armadura, ver cálculo de CA
   const abilityModBonus = [0,0,0,0,0,0];       // category=2 con <value>: bono directo al MODIFICADOR (no al puntaje) de esa característica, idx 0-5 = FUE-CAR
+  const abilityModBreakdown = [[],[],[],[],[],[]]; // traza de origen de abilityModBonus, para el editor de puntuaciones (§3.9)
   const abilityModProfFlag = [false,false,false,false,false,false]; // category=2 SIN <value>: sumar el bonificador de competencia en vez de un número fijo (ver nota abajo)
   const saveMods = {};           // idx 0-5 -> { flat, profGrant }
   const skillMods = {};          // id 100-117 -> { flat, profGrant }
@@ -1074,8 +1099,13 @@ function parseFC5eXML(xml, equipOverrides) {
         // que profGrant en categorías 3/4, pero acá el "especial" es
         // "sumar prof" en vez de "otorgar competencia".
         if (type >= 0 && type <= 5) {
-          if (val === null) abilityModProfFlag[type] = true;
-          else abilityModBonus[type] += val;
+          if (val === null) {
+            abilityModProfFlag[type] = true;
+            abilityModBreakdown[type].push({ source: sourceLabel, value: null, prof: true }); // se resuelve tras calcular `prof` final
+          } else {
+            abilityModBonus[type] += val;
+            abilityModBreakdown[type].push({ source: sourceLabel, value: val });
+          }
         }
       } else if (catRaw !== '1') {
         unknownMods.push({ category:catRaw, type, value:val, source:sourceLabel });
@@ -1095,13 +1125,16 @@ function parseFC5eXML(xml, equipOverrides) {
   // CD de conjuro/ataques más abajo, para que se refleje en cascada en
   // todo lo que usa `prof` — no solo en un subconjunto.
   prof += profBonusFlat;
+  const hpMaxBase = hpMax; // antes del bono type=9 — lo que se edita en el editor de HP (§3.9)
   hpMax += hpBonusFlat;
   if (Number.isNaN(hpCur)) hpCur = hpMax; // <hpCurrent> ausente en el XML
 
   // category=2 sin <value> ("sumar competencia" en vez de un número fijo)
   // se resuelve recién acá porque necesita el `prof` YA final (con su
-  // propio bono type=0 incluido, si lo hubiera).
+  // propio bono type=0 incluido, si lo hubiera). Se completa también el
+  // desglose (abilityModBreakdown) con el número ya resuelto.
   abilityModProfFlag.forEach((flag, i) => { if (flag) abilityModBonus[i] += prof; });
+  abilityModBreakdown.forEach(entries => entries.forEach(e => { if (e.prof) e.value = prof; }));
 
   if (unknownMods.length) {
     console.warn(`[FC5e] Modifiers sin mapeo confirmado en "${name}" — revisar empíricamente:`, unknownMods);
@@ -1120,11 +1153,18 @@ function parseFC5eXML(xml, equipOverrides) {
     max: speed, current: speed, isDice:false, diceFmt:null, isPool:true
   });
 
-  const scores = $(ch, 'abilities').replace(/,$/, '').split(',').map(Number).map((s, i) => s + abilityBonus[i]);
+  const baseScores = $(ch, 'abilities').replace(/,$/, '').split(',').map(Number);
+  const scores = baseScores.map((s, i) => s + abilityBonus[i]);
   const [str, dex, con, int_, wis, cha] = scores;
   const m = s => Math.floor((s - 10) / 2);
   const mods = { str:m(str), dex:m(dex), con:m(con), int:m(int_), wis:m(wis), cha:m(cha) };
   ABILITY_KEYS.forEach((k, i) => { mods[k] += abilityModBonus[i]; });
+  // Desglose por característica para el editor de puntuaciones (§3.9): de
+  // dónde sale cada número, no solo el total ya sumado.
+  const scoreBreakdown = ABILITY_KEYS.map((k, i) => ({
+    base: baseScores[i], bonuses: abilityBonusBreakdown[i], score: scores[i],
+    modBonuses: abilityModBreakdown[i], mod: mods[k]
+  }));
 
   // ── Skill proficiencies ────────────────────────────────────────────
   // FC5e codifica las competencias de habilidad como <proficiency>N</proficiency>
@@ -1362,7 +1402,7 @@ function parseFC5eXML(xml, equipOverrides) {
   const perceptionSkill = skills.find(s => s.key === 'perception');
   const passiveWisdom = 10 + (perceptionSkill ? perceptionSkill.mod : mods.wis) + passiveWisdomBonusFlat;
 
-  return { name, hpMax, hpCur, cName, cLvl:totalLevel, classInfo, raceName, prof, mods, scores, skills, saves, trackers, abilities, spellDC, maxSpellLevel, ac:computedAC, speed, initiative, passiveWisdom, bonuses, items };
+  return { name, hpMax, hpMaxBase, hpBreakdown:hpModsFound, hpCur, cName, cLvl:totalLevel, classInfo, raceName, prof, mods, scores, scoreBreakdown, skills, saves, trackers, abilities, spellDC, maxSpellLevel, ac:computedAC, speed, initiative, passiveWisdom, bonuses, items };
 }
 
 // ── Classify a single ability text ──────────────────
@@ -2358,7 +2398,10 @@ function render() {
     <div class="hp-controls">
       ${tempHp > 0 ? `<span class="hp-temp">+${tempHp}</span>` : ''}
       <button class="adj-btn" onclick="chHP(-1)">−</button>
-      <div class="hp-val" onclick="toggleCalc()">${hp}<span class="hp-max"> / ${char.hpMax}</span></div>
+      <div class="hp-val editable-lp"
+        onpointerdown="lpStart(event,'hp',null)" onpointermove="lpMove(event)"
+        onpointerup="lpEnd(event)" onpointercancel="lpCancel(event)"
+        onclick="if(!suppressClickIfLongPress(event)) toggleCalc()">${hp}<span class="hp-max"> / ${char.hpMax}</span></div>
       <button class="adj-btn" onclick="chHP(1)">+</button>
       <button class="calc-btn ${calcOpen?'open':''}" onclick="toggleCalc()" title="Calculadora">🧮</button>
     </div>
@@ -3186,7 +3229,9 @@ function renderAbilityScoresSection() {
     const mod = char.mods[k];
     const sign = mod >= 0 ? '+' : '';
     h += `<div class="ability-block">
-      <div class="ability-block-head">
+      <div class="ability-block-head editable-lp"
+        onpointerdown="lpStart(event,'ability','${i}')" onpointermove="lpMove(event)"
+        onpointerup="lpEnd(event)" onpointercancel="lpCancel(event)">
         <span class="stat-abbr">${ABILITY_ABBR_ES[k]}</span>
         <span class="stat-score">${score}</span>
         <span class="stat-mod">${sign}${mod}</span>
@@ -3770,6 +3815,166 @@ function toggleItemEquipped(id) {
   }
   G.equipped[id] = next;
   reparseChar();
+}
+
+// ═══════════════════════════════════════════════════
+//  EDICIÓN DE FICHA (ver §3.9 en CONTEXTO_PROYECTO.md)
+// ═══════════════════════════════════════════════════
+// Las ediciones se aplican como mutaciones al DOM del XML cacheado
+// (lastXmlText) y se reparsean con parseFC5eXML — mismo patrón que
+// reparseChar() usa para equipar/desequipar ítems (ver arriba). Así el
+// recálculo en cascada (FUE→modificador→salvación→daño/ataque de arma,
+// etc.) sale gratis de la lógica ya validada en vez de duplicarla, y de
+// paso lastXmlText sigue siendo un XML de FC5e válido con la edición
+// adentro — el camino más corto para poder reintegrarlo a FC5e.
+async function applyXmlEdit(mutatorFn) {
+  if (!lastXmlText) { toast('Reimportá el personaje para poder editarlo'); return; }
+  const doc = new DOMParser().parseFromString(lastXmlText, 'text/xml');
+  mutatorFn(doc);
+  lastXmlText = new XMLSerializer().serializeToString(doc);
+  char = parseFC5eXML(lastXmlText, G.equipped);
+  char.trackers.forEach(t => { if (G.trackers[t.id] === undefined) G.trackers[t.id] = t.max; });
+  // Si el máximo bajó por debajo del HP actual (p.ej. bajaste Constitución
+  // o el máximo de PG a mano), se recorta — nunca se sube solo porque
+  // subió el máximo, eso lo sigue decidiendo el jugador con los controles
+  // de HP normales.
+  if (G.hp != null) G.hp = Math.min(G.hp, char.hpMax);
+  await save();
+  render();
+}
+function setAbilityBaseScore(doc, idx, value) {
+  const el = doc.querySelector('character > abilities');
+  if (!el) return;
+  const arr = el.textContent.replace(/,$/, '').split(',').map(Number);
+  while (arr.length < 6) arr.push(10);
+  arr[idx] = value;
+  el.textContent = arr.join(',') + ',';
+}
+function setHpMaxBase(doc, value) {
+  const el = doc.querySelector('character > hpMax');
+  if (el) el.textContent = String(value);
+}
+
+// ── Mantener presionado para editar ─────────────────────────────────
+// Pointer Events (no touch+mouse por separado): un solo set de handlers
+// cubre dedo/mouse/lápiz sin el problema clásico de eventos duplicados
+// entre touch y su mousedown sintético posterior.
+const LONG_PRESS_MS = 500, LONG_PRESS_MOVE_TOLERANCE = 12;
+let _lpTimer = null, _lpX = 0, _lpY = 0, _lpFired = false;
+function lpStart(e, kind, id) {
+  _lpFired = false;
+  _lpX = e.clientX; _lpY = e.clientY;
+  e.currentTarget.classList.add('lp-active');
+  _lpTimer = setTimeout(() => {
+    _lpTimer = null; _lpFired = true;
+    e.currentTarget.classList.remove('lp-active');
+    openEditor(kind, id);
+  }, LONG_PRESS_MS);
+}
+function lpMove(e) {
+  if (!_lpTimer) return;
+  if (Math.abs(e.clientX - _lpX) > LONG_PRESS_MOVE_TOLERANCE ||
+      Math.abs(e.clientY - _lpY) > LONG_PRESS_MOVE_TOLERANCE) lpCancel(e);
+}
+function lpEnd(e) { lpCancel(e); }
+function lpCancel(e) {
+  if (_lpTimer) { clearTimeout(_lpTimer); _lpTimer = null; }
+  if (e && e.currentTarget) e.currentTarget.classList.remove('lp-active');
+}
+// El click nativo se sigue disparando al soltar aunque haya sido un
+// long-press (down+up sobre el mismo elemento) — los handlers de click
+// que conviven con un long-press en el mismo elemento (p.ej. hp-val
+// también abre la calculadora) llaman esto primero y no hacen nada más
+// si el editor ya se abrió.
+function suppressClickIfLongPress(e) {
+  if (_lpFired) { _lpFired = false; e.preventDefault(); e.stopPropagation(); return true; }
+  return false;
+}
+
+function closeEditor() {
+  const el = document.getElementById('editor-modal');
+  if (el) el.innerHTML = '';
+}
+function openEditor(kind, id) {
+  if (kind === 'ability') openAbilityEditor(parseInt(id));
+  else if (kind === 'hp') openHpEditor();
+}
+
+const ABILITY_NAME_ES = { str:'Fuerza', dex:'Destreza', con:'Constitución', int:'Inteligencia', wis:'Sabiduría', cha:'Carisma' };
+function breakdownRows(entries, suffix) {
+  return entries.map(b => {
+    const sign = b.value >= 0 ? '+' : '';
+    return `<div class="skill-row">
+      <div class="skill-prof-dot" style="visibility:hidden"></div>
+      <span class="skill-name">${esc(b.source)}${suffix || ''}</span>
+      <span class="skill-mod">${sign}${b.value}</span>
+    </div>`;
+  }).join('');
+}
+function editorFootRow(cancelFn, saveFn) {
+  return `<div class="modal-foot-row">
+    <button class="footer-btn" onclick="${cancelFn}">Cancelar</button>
+    <button class="footer-btn primary" onclick="${saveFn}">Guardar</button>
+  </div>`;
+}
+
+function openAbilityEditor(idx) {
+  const k = ABILITY_KEYS[idx];
+  const sb = char.scoreBreakdown[idx];
+  const modSign = sb.mod >= 0 ? '+' : '';
+  document.getElementById('editor-modal').innerHTML = `
+    <div class="modal-overlay" onclick="if(event.target===this)closeEditor()">
+      <div class="modal-sheet">
+        <div class="modal-head">
+          <span class="modal-title">📐 ${ABILITY_NAME_ES[k]} (${ABILITY_ABBR_ES[k]})</span>
+          <button class="modal-close" onclick="closeEditor()">✕</button>
+        </div>
+        <div class="modal-body">
+          <label class="editor-field-label">Puntuación base</label>
+          <input type="number" id="editor-input" class="editor-input" value="${sb.base}" min="1" max="30" inputmode="numeric">
+          <div class="editor-hint">Antes de bonos raciales, ASI, dotes e ítems.</div>
+          ${sb.bonuses.length ? `<div class="editor-subhead">Bonos a la puntuación</div><div class="skills-list">${breakdownRows(sb.bonuses)}</div>` : ''}
+          <div class="editor-total-row">Puntuación final: <b>${sb.score}</b> → Modificador: <b>${modSign}${sb.mod}</b></div>
+          ${sb.modBonuses.length ? `<div class="editor-subhead">Bonos directos al modificador</div><div class="skills-list">${breakdownRows(sb.modBonuses)}</div>` : ''}
+        </div>
+        ${editorFootRow('closeEditor()', `saveAbilityEdit(${idx})`)}
+      </div>
+    </div>`;
+}
+async function saveAbilityEdit(idx) {
+  const value = parseInt(document.getElementById('editor-input').value);
+  if (!Number.isFinite(value) || value < 1) { toast('Puntuación inválida'); return; }
+  await applyXmlEdit(doc => setAbilityBaseScore(doc, idx, value));
+  closeEditor();
+  toast(`${ABILITY_ABBR_ES[ABILITY_KEYS[idx]]} → ${value}`);
+}
+
+function openHpEditor() {
+  const base = char.hpMaxBase;
+  document.getElementById('editor-modal').innerHTML = `
+    <div class="modal-overlay" onclick="if(event.target===this)closeEditor()">
+      <div class="modal-sheet">
+        <div class="modal-head">
+          <span class="modal-title">❤️ Puntos de golpe máximos</span>
+          <button class="modal-close" onclick="closeEditor()">✕</button>
+        </div>
+        <div class="modal-body">
+          <label class="editor-field-label">Máximo base</label>
+          <input type="number" id="editor-input" class="editor-input" value="${base}" min="1" inputmode="numeric">
+          <div class="editor-hint">Lo que exporta FC5e antes de bonos de objetos/rasgos con etiqueta "Hit Points".</div>
+          ${char.hpBreakdown.length ? `<div class="editor-subhead">Bonos</div><div class="skills-list">${breakdownRows(char.hpBreakdown)}</div>` : ''}
+          <div class="editor-total-row">Máximo final: <b>${char.hpMax}</b></div>
+        </div>
+        ${editorFootRow('closeEditor()', 'saveHpEdit()')}
+      </div>
+    </div>`;
+}
+async function saveHpEdit() {
+  const value = parseInt(document.getElementById('editor-input').value);
+  if (!Number.isFinite(value) || value < 1) { toast('Máximo inválido'); return; }
+  await applyXmlEdit(doc => setHpMaxBase(doc, value));
+  closeEditor();
+  toast(`PG máximos → ${value}`);
 }
 
 
