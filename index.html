@@ -326,6 +326,23 @@ html,body{height:100%;background:var(--bg);color:var(--text);
 .modal-foot-row .footer-btn{margin-top:0;flex:1}
 .footer-btn.primary{background:var(--blue-bg);border-color:var(--blue-border);
   color:var(--blue);font-weight:600}
+.editor-textarea{min-height:90px;resize:vertical;line-height:1.4}
+.editor-row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:8px}
+.editor-row3 .editor-input{font-size:.85rem;padding:7px 6px}
+.mod-row{display:flex;gap:4px;align-items:center;margin-bottom:6px}
+.mod-cat-select{flex:1.3;min-width:0}
+.mod-type-select{flex:1.3;min-width:0}
+.mod-cat-select,.mod-type-select{background:var(--s2);border:1px solid var(--border2);color:var(--text);
+  border-radius:8px;padding:6px 4px;font-size:.7rem}
+.mod-value-input{width:52px;flex-shrink:0;background:var(--s2);border:1px solid var(--border2);
+  color:var(--text);border-radius:8px;padding:6px 4px;font-size:.8rem;text-align:center}
+.mod-novalue-btn{flex-shrink:0;background:var(--s2);border:1px solid var(--border2);color:var(--muted);
+  border-radius:8px;padding:6px 6px;font-size:.65rem;white-space:nowrap}
+.mod-tiny-btn{flex-shrink:0;width:26px;height:26px;background:var(--s1);border:1px solid var(--border2);
+  color:var(--muted);border-radius:7px;font-size:.75rem}
+.mod-tiny-btn.danger{color:var(--red)}
+.add-content-row{display:flex;gap:8px;margin-bottom:8px}
+.add-content-row .footer-btn{margin-top:0;flex:1}
 
 #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);
   background:var(--s3);border:1px solid var(--border2);color:var(--text);
@@ -541,6 +558,11 @@ let lastXmlText = null;
 // Maps populated on each render(), used by toggleDesc()
 let SHORT_DESC = {};
 let FULL_DESC  = {};
+// id de habilidad -> objeto habilidad completo (name/source/itemId/spellLevel…),
+// repoblado en cada render() — permite que el long-press abra el editor
+// correcto sin tener que meter texto arbitrario (nombres con comillas,
+// etc.) dentro de un atributo HTML inline. Ver §3.10.
+let ABILITY_INDEX = {};
 // Populated fresh by renderSuggestions(); maps combo-button index -> steps
 let SUGGESTION_COMBOS = [];
 
@@ -1307,12 +1329,12 @@ function parseFC5eXML(xml, equipOverrides) {
       // cuenta usando el flag `equipped` de abajo.
       weapons.push({
         name: it.name, type: it.type, damage1H: it.damage1H, damage2H: it.damage2H,
-        weaponProperty: it.weaponProperty, mods: it.mods, equipped: it.equipped
+        weaponProperty: it.weaponProperty, mods: it.mods, equipped: it.equipped, itemId: it.id
       });
     } else if (it.showAsAbility && it.name && it.text) {
       // Mismo motivo: siempre se agrega, buildAbilities decide visibilidad
       // según `equipped` (alwaysActive:true para pociones — no se "equipan").
-      itemFeats.push({ name: it.name, text: it.text, source:'item', equipped: it.equipped, alwaysActive: it.isPotion });
+      itemFeats.push({ name: it.name, text: it.text, source:'item', equipped: it.equipped, alwaysActive: it.isPotion, itemId: it.id });
     }
   });
 
@@ -2169,7 +2191,7 @@ function buildAbilities(entries, level, mods, prof, weapons, spellEntries, spell
     const wObj = {
       id:`w${wi}`, name:`Atacar con ${w.name}`,
       desc:`${attacks} ${attacks>1?'ataques':'ataque'} · +${atkB} al impacto · ${dmgStr}`,
-      full:null, pc:0, once:false, source:'weapon', spellLevel:0, dc:null,
+      full:null, pc:0, once:false, source:'weapon', spellLevel:0, dc:null, itemId:w.itemId,
       dmgEstimate: Math.round(attacks * dmgEst * 10) / 10
     };
     wObj.tags = tagAbility(wObj);
@@ -2197,7 +2219,7 @@ function buildAbilities(entries, level, mods, prof, weapons, spellEntries, spell
       const obj = {
         id:`e${idx}`, name:e.name, desc,
         full: (full !== desc ? full : null),
-        pc:trig.pc, once:false, source:e.source, spellLevel:0, dc:null,
+        pc:trig.pc, once:false, source:e.source, spellLevel:0, dc:null, itemId:e.itemId,
         triggerKind: trig.triggerKind, scaling: trig.scaling, variablePC: trig.variablePC,
         resKey: trig.resKey
       };
@@ -2228,7 +2250,7 @@ function buildAbilities(entries, level, mods, prof, weapons, spellEntries, spell
         const full = fullDescClean(e.text);
         out.passive.push({
           id:`e${idx}`, name:e.name, desc,
-          full:(full!==desc?full:null), source:e.source
+          full:(full!==desc?full:null), source:e.source, itemId:e.itemId
         });
       }
       return;
@@ -2253,7 +2275,7 @@ function buildAbilities(entries, level, mods, prof, weapons, spellEntries, spell
     const obj = {
       id:`e${idx}`, name:e.name, desc,
       full: (full !== desc ? full : null),
-      pc, once, source:e.source, spellLevel:0, dc:null, resKey, ownPool,
+      pc, once, source:e.source, spellLevel:0, dc:null, resKey, ownPool, itemId:e.itemId,
       effectKey: effInfo?.effectKey ?? null,
       selfOrAlly: effInfo?.selfOrAlly ?? false,
       isConcentration,
@@ -2377,7 +2399,7 @@ function sourceMeta(ab) {
 // ═══════════════════════════════════════════════════
 function render() {
   if (!char) return;
-  SHORT_DESC = {}; FULL_DESC = {};
+  SHORT_DESC = {}; FULL_DESC = {}; ABILITY_INDEX = {};
 
   document.getElementById('hdr-name').textContent = char.name;
   document.getElementById('hdr-meta').textContent =
@@ -2650,6 +2672,7 @@ function render() {
       const { cls:srcCls, label:srcLabel } = sourceMeta(ab);
 
       SHORT_DESC[ab.id] = ab.desc;
+      ABILITY_INDEX[ab.id] = ab;
       if (ab.full) FULL_DESC[ab.id] = ab.full;
 
       // Pool stepper: permite +/- O escritura directa con teclado numérico
@@ -2731,8 +2754,7 @@ function render() {
 
       // Layout reorganizado: [ab-main] [ab-right: costs + X]
       // X ya no es position:absolute — vive en .ab-right para no solapar el stepper
-      h += `<div class="ab ${srcCls}${cls2?' '+cls2:''}${comboHighlight}" onclick="${fn}">
-        <div class="ab-main">
+      h += `<div class="ab ${srcCls}${cls2?' '+cls2:''}${comboHighlight} editable-lp"${lpAttrs(ab)} onclick="if(!suppressClickIfLongPress(event)){${fn}}">        <div class="ab-main">
           <div class="ab-name">${esc(ab.name)}</div>
           <div class="ab-desc" id="desc-${ab.id}">${esc(ab.desc)}</div>
           ${ab.full ? `<span class="ab-more" id="more-${ab.id}" onclick="event.stopPropagation();toggleDesc('${ab.id}')">ver más ▾</span>` : ''}
@@ -2764,6 +2786,13 @@ function render() {
 
   // ── Rasgos pasivos / siempre activos ──────────────
   h += renderPassiveSection();
+
+  // ── Agregar contenido personalizado (dote/rasgo, conjuro — el de
+  // objeto ya vive dentro de Inventario, junto a los demás ítems) ──
+  h += `<div class="add-content-row">
+    <button class="footer-btn" onclick="openEditor('feat',null)">+ Dote / rasgo</button>
+    ${char.classInfo && char.classInfo.length ? `<button class="footer-btn" onclick="openEditor('spell',null)">+ Conjuro</button>` : ''}
+  </div>`;
 
   // ── Footer: open recycle bin ──────────────────────
   const totalHidden = hiddenACount + hiddenTCount;
@@ -3230,7 +3259,7 @@ function renderAbilityScoresSection() {
     const sign = mod >= 0 ? '+' : '';
     h += `<div class="ability-block">
       <div class="ability-block-head editable-lp"
-        onpointerdown="lpStart(event,'ability','${i}')" onpointermove="lpMove(event)"
+        onpointerdown="lpStart(event,'stat','${i}')" onpointermove="lpMove(event)"
         onpointerup="lpEnd(event)" onpointercancel="lpCancel(event)">
         <span class="stat-abbr">${ABILITY_ABBR_ES[k]}</span>
         <span class="stat-score">${score}</span>
@@ -3332,7 +3361,6 @@ function renderInventorySection() {
     }
     return '';
   }
-  if (!char.items.length) return '';
 
   const collapsed = !!G.collapsed.inventory;
   let h = `<div class="section"><div class="sec-head sec-toggle ${collapsed?'collapsed':''}" onclick="toggleSection('inventory')">
@@ -3366,7 +3394,9 @@ function renderInventorySection() {
       const toggle = it.isPotion
         ? `<span class="inv-tag">consumible</span>`
         : `<button class="inv-toggle ${it.equipped?'on':''}" onclick="toggleItemEquipped('${it.id}')">${it.equipped?'✓ Equipado':'Equipar'}</button>`;
-      h += `<div class="ab static ${srcCls}">
+      h += `<div class="ab static ${srcCls} editable-lp"
+        onpointerdown="lpStart(event,'item','${it.id}')" onpointermove="lpMove(event)"
+        onpointerup="lpEnd(event)" onpointercancel="lpCancel(event)">
         <div class="ab-main">
           <div class="ab-name">${esc(it.name)}${magic}</div>
           ${desc ? `<div class="ab-desc" id="desc-${it.id}">${esc(desc)}</div>` : ''}
@@ -3388,6 +3418,7 @@ function renderInventorySection() {
     h += `</div>`;
   }
 
+  h += `<button class="footer-btn" onclick="openEditor('item',null)">+ Agregar objeto</button>`;
   return h + `</div>`;
 }
 
@@ -3405,9 +3436,10 @@ function renderPassiveSection() {
 
   all.forEach(ab => {
     SHORT_DESC[ab.id] = ab.desc;
+    ABILITY_INDEX[ab.id] = ab;
     if (ab.full) FULL_DESC[ab.id] = ab.full;
     const { cls:srcCls, label:srcLabel } = sourceMeta(ab);
-    h += `<div class="ab passive-trait ${srcCls}">
+    h += `<div class="ab passive-trait ${srcCls} editable-lp"${lpAttrs(ab)}>
       <button class="x-btn" onclick="hideAbility('${ab.id}')" title="Ocultar">✕</button>
       <div class="ab-main">
         <div class="ab-name">${esc(ab.name)}</div>
@@ -3441,6 +3473,7 @@ function renderUtilitySection() {
 
   all.forEach(ab => {
     SHORT_DESC[ab.id] = ab.desc;
+    ABILITY_INDEX[ab.id] = ab;
     if (ab.full) FULL_DESC[ab.id] = ab.full;
 
     let slotOk = true, slotTracker = null;
@@ -3457,7 +3490,7 @@ function renderUtilitySection() {
       ? `<div class="conc-warning">⚠️ Reemplaza <em>${esc(activeConcentrationLabel() || 'concentración activa')}</em></div>`
       : '';
 
-    h += `<div class="ab util ${srcCls}">
+    h += `<div class="ab util ${srcCls} editable-lp"${lpAttrs(ab)}>
       <button class="x-btn" onclick="hideAbility('${ab.id}')" title="Ocultar">✕</button>
       <div class="ab-main">
         <div class="ab-name">${esc(ab.name)}</div>
@@ -3516,6 +3549,7 @@ function renderTriggerSection() {
 
   all.forEach(ab => {
     SHORT_DESC[ab.id] = ab.desc;
+    ABILITY_INDEX[ab.id] = ab;
     if (ab.full) FULL_DESC[ab.id] = ab.full;
     const { cls:srcCls, label:srcLabel } = sourceMeta(ab);
     const displayName = ab.triggerKind === 'metamagic' && !/metamagi/i.test(ab.name)
@@ -3530,7 +3564,7 @@ function renderTriggerSection() {
     const pcTracker = (ab.pc > 0 || ab.variablePC) ? findResTracker(ab.resKey) : null;
     const resLabel = resAbbrev(ab.resKey, pcTracker?.label);
 
-    h += `<div class="trig ${srcCls}">
+    h += `<div class="trig ${srcCls} editable-lp"${lpAttrs(ab)}>
       <button class="x-btn" onclick="hideAbility('${ab.id}')" title="Ocultar">✕</button>
       <div class="trig-head">
         <div class="trig-main">
@@ -3862,12 +3896,18 @@ function setHpMaxBase(doc, value) {
 const LONG_PRESS_MS = 500, LONG_PRESS_MOVE_TOLERANCE = 12;
 let _lpTimer = null, _lpX = 0, _lpY = 0, _lpFired = false;
 function lpStart(e, kind, id) {
+  if (e.target.closest('button, input, select, a, .stepper')) return; // no interferir con controles propios de la tarjeta
+  // e.currentTarget solo es válido MIENTRAS se despacha el evento — el DOM
+  // lo pone en null apenas termina, así que hay que guardar el elemento en
+  // una variable normal antes del setTimeout (si no, el timeout explota en
+  // silencio con un TypeError y openEditor() nunca llega a llamarse).
+  const el = e.currentTarget;
   _lpFired = false;
   _lpX = e.clientX; _lpY = e.clientY;
-  e.currentTarget.classList.add('lp-active');
+  el.classList.add('lp-active');
   _lpTimer = setTimeout(() => {
     _lpTimer = null; _lpFired = true;
-    e.currentTarget.classList.remove('lp-active');
+    el.classList.remove('lp-active');
     openEditor(kind, id);
   }, LONG_PRESS_MS);
 }
@@ -3891,13 +3931,32 @@ function suppressClickIfLongPress(e) {
   return false;
 }
 
+// Atributos de long-press para una tarjeta de habilidad, elegidos según
+// su fuente: las de arma/ítem editan el ÍTEM que las genera (mismo texto/
+// mods que vería el jugador en Inventario); las de conjuro van al editor
+// de conjuro; el resto (clase/raza/trasfondo/dote de personaje) al editor
+// de dote/rasgo. El ataque desarmado sintético (__attack) no tiene fuente
+// en el XML — no es editable.
+function lpAttrs(ab) {
+  if (!ab || ab.id === '__attack') return '';
+  let kind, id;
+  if (ab.source === 'weapon' || ab.source === 'item') { kind = 'item'; id = ab.itemId; }
+  else if (ab.spellLevel > 0) { kind = 'spell'; id = ab.id; }
+  else { kind = 'feat'; id = ab.id; }
+  if (id == null) return '';
+  return ` onpointerdown="lpStart(event,'${kind}','${id}')" onpointermove="lpMove(event)" onpointerup="lpEnd(event)" onpointercancel="lpCancel(event)"`;
+}
+
 function closeEditor() {
   const el = document.getElementById('editor-modal');
   if (el) el.innerHTML = '';
 }
 function openEditor(kind, id) {
-  if (kind === 'ability') openAbilityEditor(parseInt(id));
+  if (kind === 'stat') openStatEditor(parseInt(id));
   else if (kind === 'hp') openHpEditor();
+  else if (kind === 'feat') { const ab = id ? ABILITY_INDEX[id] : null; ab ? openFeatEditor(ab) : openNewFeatEditor(); }
+  else if (kind === 'item') { id ? openItemEditor(id) : openNewItemEditor(); }
+  else if (kind === 'spell') { const ab = id ? ABILITY_INDEX[id] : null; ab ? openSpellEditor(ab) : openNewSpellEditor(); }
 }
 
 const ABILITY_NAME_ES = { str:'Fuerza', dex:'Destreza', con:'Constitución', int:'Inteligencia', wis:'Sabiduría', cha:'Carisma' };
@@ -3918,7 +3977,7 @@ function editorFootRow(cancelFn, saveFn) {
   </div>`;
 }
 
-function openAbilityEditor(idx) {
+function openStatEditor(idx) {
   const k = ABILITY_KEYS[idx];
   const sb = char.scoreBreakdown[idx];
   const modSign = sb.mod >= 0 ? '+' : '';
@@ -3937,11 +3996,11 @@ function openAbilityEditor(idx) {
           <div class="editor-total-row">Puntuación final: <b>${sb.score}</b> → Modificador: <b>${modSign}${sb.mod}</b></div>
           ${sb.modBonuses.length ? `<div class="editor-subhead">Bonos directos al modificador</div><div class="skills-list">${breakdownRows(sb.modBonuses)}</div>` : ''}
         </div>
-        ${editorFootRow('closeEditor()', `saveAbilityEdit(${idx})`)}
+        ${editorFootRow('closeEditor()', `saveStatEdit(${idx})`)}
       </div>
     </div>`;
 }
-async function saveAbilityEdit(idx) {
+async function saveStatEdit(idx) {
   const value = parseInt(document.getElementById('editor-input').value);
   if (!Number.isFinite(value) || value < 1) { toast('Puntuación inválida'); return; }
   await applyXmlEdit(doc => setAbilityBaseScore(doc, idx, value));
@@ -3975,6 +4034,451 @@ async function saveHpEdit() {
   await applyXmlEdit(doc => setHpMaxBase(doc, value));
   closeEditor();
   toast(`PG máximos → ${value}`);
+}
+
+// ── Localizar elementos en un doc recién parseado ─────────────────────
+// Los ids de char.abilities/items apuntan a un DOM que se descarta en
+// cada reparseo (ver applyXmlEdit) — no sirven para ubicar el nodo en el
+// `doc` NUEVO que recibe cada mutatorFn. Cada tipo de entidad usa la
+// estrategia más robusta disponible:
+//  - Ítems: posición entre TODOS los <item> — el mismo criterio que ya
+//    usa el id `item{idx}` de inventario (comprobadamente estable).
+//  - Conjuros: índice de clase + posición entre los <spell> directos de
+//    esa clase — mismo criterio que ya usa el id `sp{classIdx}_{i}`.
+//  - Dotes/rasgos (<feat>): NO tienen un id posicional propio (nacen de
+//    concatenar clase+raza+trasfondo+ítems+personaje en buildAbilities)
+//    — se ubican por nombre DENTRO de su categoría de origen (ab.source).
+//    Podría fallar si hay dos dotes con el MISMO nombre exacto en la
+//    MISMA categoría (p.ej. multiclase) — caso raro, sin cubrir.
+function locateItemEl(doc, itemId) {
+  const m = /^item(\d+)$/.exec(itemId || '');
+  const ch = doc && doc.querySelector('character');
+  return (m && ch) ? (ch.querySelectorAll('item')[+m[1]] || null) : null;
+}
+function locateSpellEl(doc, spellId) {
+  const m = /^sp(\d+)_(\d+)$/.exec(spellId || '');
+  const ch = doc && doc.querySelector('character');
+  if (!m || !ch) return null;
+  const c = ch.querySelectorAll('class')[+m[1]];
+  if (!c) return null;
+  const direct = [...c.children].filter(x => x.tagName.toLowerCase() === 'spell');
+  return direct[+m[2]] || null;
+}
+function locateFeatEl(doc, source, name) {
+  const ch = doc && doc.querySelector('character');
+  if (!ch) return null;
+  let candidates = [];
+  if (source === 'race') candidates = [...(ch.querySelector('race')?.querySelectorAll('feat') || [])];
+  else if (source === 'background') candidates = [...(ch.querySelector('background')?.querySelectorAll('feat') || [])];
+  else if (source === 'feat') candidates = [...ch.children].filter(c => c.tagName.toLowerCase() === 'feat');
+  else if (source === 'class') {
+    [...ch.querySelectorAll('class')].forEach(c => {
+      let direct = [...c.children].filter(x => x.tagName.toLowerCase() === 'feat');
+      if (!direct.length) direct = [...c.querySelectorAll('feat')];
+      candidates.push(...direct);
+    });
+  }
+  return candidates.find(f => (f.querySelector('name')?.textContent || '').trim() === name) || null;
+}
+function currentDoc() {
+  return lastXmlText ? new DOMParser().parseFromString(lastXmlText, 'text/xml') : null;
+}
+
+// ── Mutación genérica de campos/mods (dotes, ítems y conjuros comparten
+// la misma forma: <name>, <text>, <mod>*) ─────────────────────────────
+function getChildText(el, tag) {
+  const c = el && [...el.children].find(x => x.tagName.toLowerCase() === tag.toLowerCase());
+  return c ? c.textContent : '';
+}
+function setChildText(doc, el, tag, value) {
+  let c = [...el.children].find(x => x.tagName.toLowerCase() === tag.toLowerCase());
+  if (!c) { c = doc.createElement(tag); el.appendChild(c); }
+  c.textContent = value;
+}
+function getMods(el) {
+  if (!el) return [];
+  return [...el.children].filter(c => c.tagName.toLowerCase() === 'mod').map(md => ({
+    category: getChildText(md, 'category') || '0',
+    type: getChildText(md, 'type') || '0',
+    value: getChildText(md, 'value') === '' ? null : (parseInt(getChildText(md, 'value')) || 0)
+  }));
+}
+function setMods(doc, el, mods) {
+  [...el.children].filter(c => c.tagName.toLowerCase() === 'mod').forEach(c => el.removeChild(c));
+  mods.forEach(m => {
+    const md = doc.createElement('mod');
+    setChildText(doc, md, 'category', String(m.category));
+    setChildText(doc, md, 'type', String(m.type));
+    if (m.value !== null && m.value !== undefined) setChildText(doc, md, 'value', String(m.value));
+    el.appendChild(md);
+  });
+}
+function createFeatEl(doc, name, text) {
+  const f = doc.createElement('feat');
+  setChildText(doc, f, 'name', name);
+  setChildText(doc, f, 'text', text);
+  return f;
+}
+function createItemEl(doc, name, text) {
+  const it = doc.createElement('item');
+  setChildText(doc, it, 'name', name);
+  if (text) setChildText(doc, it, 'text', text);
+  setChildText(doc, it, 'type', '14'); // objeto maravilloso — el tipo más neutro/genérico para un ítem homebrew
+  setChildText(doc, it, 'weight', '0');
+  setChildText(doc, it, 'value', '0');
+  return it;
+}
+function createSpellEl(doc, classIdx, fields) {
+  const ch = doc.querySelector('character');
+  const c = ch && ch.querySelectorAll('class')[classIdx];
+  if (!c) return null;
+  const sp = doc.createElement('spell');
+  setChildText(doc, sp, 'name', fields.name);
+  setChildText(doc, sp, 'text', fields.text);
+  setChildText(doc, sp, 'level', String(fields.level ?? 0));
+  if (fields.time) setChildText(doc, sp, 'time', fields.time);
+  if (fields.range) setChildText(doc, sp, 'range', fields.range);
+  if (fields.duration) setChildText(doc, sp, 'duration', fields.duration);
+  c.appendChild(sp);
+  return sp;
+}
+
+// ── Editor de <mod> compartido por dotes/rasgos e ítems ───────────────
+// Los mismos 16 tipos de "Bono" y los índices de característica/
+// salvación/habilidad ya documentados y validados en CONTEXTO_PROYECTO.md
+// §2.8 — reutilizados acá tal cual para no desalinear los índices que
+// escribe este editor con los que ya lee scanGenericMods.
+const MOD_CATEGORY_OPTS = [
+  ['0','Bono (ataque, daño, CA, PG, iniciativa…)'],
+  ['1','Puntuación de característica'],
+  ['2','Modificador de característica'],
+  ['3','Tirada de salvación'],
+  ['4','Habilidad'],
+];
+const MOD_TYPE_LABELS = {
+  '0': ['Bonificador de Competencia','Ataque con arma','Daño con arma','Ataque cuerpo a cuerpo','Daño cuerpo a cuerpo','Ataque a distancia','Daño a distancia','Ataque de conjuro','CD de conjuro','Puntos de golpe','Clase de Armadura','Salvaciones (todas)','Iniciativa','Velocidad','Percepción pasiva','CA sin armadura'],
+  '1': ['Fuerza','Destreza','Constitución','Inteligencia','Sabiduría','Carisma'],
+  '2': ['Fuerza','Destreza','Constitución','Inteligencia','Sabiduría','Carisma'],
+  '3': ['Fuerza','Destreza','Constitución','Inteligencia','Sabiduría','Carisma'],
+  '4': ['Acrobacias','Trato con animales','Arcanos','Atletismo','Engaño','Historia','Perspicacia','Intimidación','Investigación','Medicina','Naturaleza','Percepción','Interpretación','Persuasión','Religión','Juego de manos','Sigilo','Supervivencia'],
+};
+let _modEdit = [];
+function modEditRowsHtml() {
+  if (!_modEdit.length) return '<div class="editor-hint">Sin bonos propios. "+ Agregar bono" para sumar uno.</div>';
+  return _modEdit.map((m, i) => {
+    const allowNoValue = m.category === '2' || m.category === '3' || m.category === '4';
+    const typeOpts = (MOD_TYPE_LABELS[m.category] || []).map((lbl, ti) =>
+      `<option value="${ti}" ${String(ti)===String(m.type)?'selected':''}>${esc(lbl)}</option>`).join('');
+    const valueField = (allowNoValue && m.value === null)
+      ? `<button class="mod-novalue-btn" onclick="modRowToggleNoValue(${i})" title="Toca para poner un número en vez de 'competencia'">= competencia</button>`
+      : `<input type="number" class="mod-value-input" value="${m.value ?? 0}" onchange="modRowSet(${i},'value',this.value)">`;
+    return `<div class="mod-row">
+      <select class="mod-cat-select" onchange="modRowSet(${i},'category',this.value)">
+        ${MOD_CATEGORY_OPTS.map(([v,l]) => `<option value="${v}" ${v===m.category?'selected':''}>${esc(l)}</option>`).join('')}
+      </select>
+      <select class="mod-type-select" onchange="modRowSet(${i},'type',this.value)">${typeOpts}</select>
+      ${valueField}
+      ${allowNoValue ? `<button class="mod-tiny-btn" onclick="modRowToggleNoValue(${i})" title="Alternar competencia / número">±</button>` : ''}
+      <button class="mod-tiny-btn danger" onclick="modRowRemove(${i})" title="Quitar">✕</button>
+    </div>`;
+  }).join('');
+}
+function refreshModEditor() {
+  const el = document.getElementById('mod-editor-rows');
+  if (el) el.innerHTML = modEditRowsHtml();
+}
+function modRowSet(i, field, value) {
+  if (field === 'category') { _modEdit[i].category = value; _modEdit[i].type = '0'; _modEdit[i].value = 0; }
+  else if (field === 'type') { _modEdit[i].type = value; }
+  else if (field === 'value') { _modEdit[i].value = parseInt(value) || 0; }
+  refreshModEditor();
+}
+function modRowToggleNoValue(i) {
+  _modEdit[i].value = (_modEdit[i].value === null) ? 0 : null;
+  refreshModEditor();
+}
+function modRowRemove(i) { _modEdit.splice(i, 1); refreshModEditor(); }
+function modRowAdd() { _modEdit.push({ category:'0', type:'1', value:0 }); refreshModEditor(); }
+function modEditorBlock() {
+  return `<div class="editor-subhead">Bonos propios</div>
+    <div id="mod-editor-rows">${modEditRowsHtml()}</div>
+    <button class="footer-btn" style="margin-top:6px" onclick="modRowAdd()">+ Agregar bono</button>`;
+}
+
+// ── Dotes / rasgos (<feat>) ────────────────────────────────────────────
+let _editingFeatRef = null; // {source, name} del elemento ORIGINAL — se relocaliza por nombre al guardar
+function openFeatEditor(ab) {
+  const doc = currentDoc();
+  const el = doc && locateFeatEl(doc, ab.source, ab.name);
+  const name = el ? getChildText(el, 'name') : ab.name;
+  const text = el ? getChildText(el, 'text') : (ab.full || ab.desc || '');
+  _modEdit = getMods(el);
+  _editingFeatRef = { source: ab.source, name: ab.name };
+  document.getElementById('editor-modal').innerHTML = `
+    <div class="modal-overlay" onclick="if(event.target===this)closeEditor()">
+      <div class="modal-sheet">
+        <div class="modal-head">
+          <span class="modal-title">📜 Dote / rasgo</span>
+          <button class="modal-close" onclick="closeEditor()">✕</button>
+        </div>
+        <div class="modal-body">
+          <label class="editor-field-label">Nombre</label>
+          <input type="text" id="editor-name" class="editor-input" style="text-align:left;font-size:.95rem" value="${esc(name)}">
+          <label class="editor-field-label" style="margin-top:8px">Descripción</label>
+          <textarea id="editor-text" class="editor-input editor-textarea" style="text-align:left;font-size:.85rem;font-weight:400">${esc(text)}</textarea>
+          <div class="editor-hint">Con menos de 30 caracteres no aparece como tarjeta (se descarta por no tener contenido mecánico).</div>
+          ${modEditorBlock()}
+        </div>
+        ${editorFootRow('closeEditor()', 'saveFeatEdit()')}
+      </div>
+    </div>`;
+}
+async function saveFeatEdit() {
+  const name = document.getElementById('editor-name').value.trim();
+  const text = document.getElementById('editor-text').value;
+  if (!name) { toast('Ponele un nombre'); return; }
+  if (text.trim().length < 30) { toast('El texto necesita al menos 30 caracteres para verse como tarjeta'); return; }
+  const ref = _editingFeatRef;
+  await applyXmlEdit(doc => {
+    const el = locateFeatEl(doc, ref.source, ref.name);
+    if (!el) return;
+    setChildText(doc, el, 'name', name);
+    setChildText(doc, el, 'text', text);
+    setMods(doc, el, _modEdit);
+  });
+  closeEditor();
+  toast(`${name} guardado`);
+}
+function openNewFeatEditor() {
+  _modEdit = [];
+  document.getElementById('editor-modal').innerHTML = `
+    <div class="modal-overlay" onclick="if(event.target===this)closeEditor()">
+      <div class="modal-sheet">
+        <div class="modal-head">
+          <span class="modal-title">📜 Nueva dote / rasgo</span>
+          <button class="modal-close" onclick="closeEditor()">✕</button>
+        </div>
+        <div class="modal-body">
+          <label class="editor-field-label">Nombre</label>
+          <input type="text" id="editor-name" class="editor-input" style="text-align:left;font-size:.95rem" placeholder="Nombre de la dote/rasgo">
+          <label class="editor-field-label" style="margin-top:8px">Descripción</label>
+          <textarea id="editor-text" class="editor-input editor-textarea" style="text-align:left;font-size:.85rem;font-weight:400" placeholder="Texto de la habilidad — de acá se detecta automáticamente si es Acción/Adicional/Reacción/pasiva, igual que con el resto"></textarea>
+          <div class="editor-hint">Necesita al menos 30 caracteres para aparecer como tarjeta.</div>
+          ${modEditorBlock()}
+        </div>
+        ${editorFootRow('closeEditor()', 'saveNewFeatEdit()')}
+      </div>
+    </div>`;
+}
+async function saveNewFeatEdit() {
+  const name = document.getElementById('editor-name').value.trim();
+  const text = document.getElementById('editor-text').value.trim();
+  if (!name || !text) { toast('Completá nombre y descripción'); return; }
+  if (text.length < 30) { toast('El texto necesita al menos 30 caracteres para verse como tarjeta'); return; }
+  await applyXmlEdit(doc => {
+    const ch = doc.querySelector('character');
+    const f = createFeatEl(doc, name, text);
+    setMods(doc, f, _modEdit);
+    ch.appendChild(f); // dote a nivel de personaje — mismo lugar que charFeats (ver 2.x)
+  });
+  closeEditor();
+  toast(`${name} agregado`);
+}
+
+// ── Ítems ───────────────────────────────────────────────────────────
+function openItemEditor(itemId) {
+  const it = (char.items || []).find(i => i.id === itemId);
+  if (!it) { toast('No se encontró el ítem'); return; }
+  const doc = currentDoc();
+  const el = doc && locateItemEl(doc, itemId);
+  _modEdit = getMods(el);
+  document.getElementById('editor-modal').innerHTML = `
+    <div class="modal-overlay" onclick="if(event.target===this)closeEditor()">
+      <div class="modal-sheet">
+        <div class="modal-head">
+          <span class="modal-title">🎒 ${it.isWeapon ? 'Arma' : 'Ítem'}</span>
+          <button class="modal-close" onclick="closeEditor()">✕</button>
+        </div>
+        <div class="modal-body">
+          <label class="editor-field-label">Nombre</label>
+          <input type="text" id="editor-name" class="editor-input" style="text-align:left;font-size:.95rem" value="${esc(it.name)}">
+          <label class="editor-field-label" style="margin-top:8px">Descripción</label>
+          <textarea id="editor-text" class="editor-input editor-textarea" style="text-align:left;font-size:.85rem;font-weight:400">${esc(it.text||'')}</textarea>
+          <div class="editor-row3">
+            <div><label class="editor-field-label">CA</label><input type="number" id="editor-ac" class="editor-input" value="${it.ac||''}" placeholder="—"></div>
+            <div><label class="editor-field-label">Daño 1 mano</label><input type="text" id="editor-dmg1" class="editor-input" style="font-size:.85rem" value="${esc(it.damage1H||'')}" placeholder="1d8"></div>
+            <div><label class="editor-field-label">Daño 2 manos</label><input type="text" id="editor-dmg2" class="editor-input" style="font-size:.85rem" value="${esc(it.damage2H||'')}" placeholder="—"></div>
+          </div>
+          ${modEditorBlock()}
+        </div>
+        ${editorFootRow('closeEditor()', `saveItemEdit('${itemId}')`)}
+      </div>
+    </div>`;
+}
+async function saveItemEdit(itemId) {
+  const name = document.getElementById('editor-name').value.trim();
+  const text = document.getElementById('editor-text').value;
+  const ac = document.getElementById('editor-ac').value;
+  const dmg1 = document.getElementById('editor-dmg1').value.trim();
+  const dmg2 = document.getElementById('editor-dmg2').value.trim();
+  if (!name) { toast('Ponele un nombre'); return; }
+  await applyXmlEdit(doc => {
+    const el = locateItemEl(doc, itemId);
+    if (!el) return;
+    setChildText(doc, el, 'name', name);
+    setChildText(doc, el, 'text', text);
+    if (ac !== '') setChildText(doc, el, 'ac', String(parseInt(ac)||0));
+    if (dmg1) setChildText(doc, el, 'damage1H', dmg1);
+    if (dmg2) setChildText(doc, el, 'damage2H', dmg2);
+    setMods(doc, el, _modEdit);
+  });
+  closeEditor();
+  toast(`${name} guardado`);
+}
+function openNewItemEditor() {
+  _modEdit = [];
+  document.getElementById('editor-modal').innerHTML = `
+    <div class="modal-overlay" onclick="if(event.target===this)closeEditor()">
+      <div class="modal-sheet">
+        <div class="modal-head">
+          <span class="modal-title">🎒 Nuevo objeto</span>
+          <button class="modal-close" onclick="closeEditor()">✕</button>
+        </div>
+        <div class="modal-body">
+          <label class="editor-field-label">Nombre</label>
+          <input type="text" id="editor-name" class="editor-input" style="text-align:left;font-size:.95rem" placeholder="Nombre del objeto">
+          <label class="editor-field-label" style="margin-top:8px">Descripción</label>
+          <textarea id="editor-text" class="editor-input editor-textarea" style="text-align:left;font-size:.85rem;font-weight:400" placeholder="Qué hace (opcional)"></textarea>
+          <div class="editor-row3">
+            <div><label class="editor-field-label">CA</label><input type="number" id="editor-ac" class="editor-input" placeholder="—"></div>
+            <div><label class="editor-field-label">Daño 1 mano</label><input type="text" id="editor-dmg1" class="editor-input" style="font-size:.85rem" placeholder="1d8"></div>
+            <div><label class="editor-field-label">Daño 2 manos</label><input type="text" id="editor-dmg2" class="editor-input" style="font-size:.85rem" placeholder="—"></div>
+          </div>
+          <div class="editor-hint">Se agrega desequipado — tocá "Equipar" desde el Inventario después de guardar.</div>
+          ${modEditorBlock()}
+        </div>
+        ${editorFootRow('closeEditor()', 'saveNewItemEdit()')}
+      </div>
+    </div>`;
+}
+async function saveNewItemEdit() {
+  const name = document.getElementById('editor-name').value.trim();
+  const text = document.getElementById('editor-text').value.trim();
+  const ac = document.getElementById('editor-ac').value;
+  const dmg1 = document.getElementById('editor-dmg1').value.trim();
+  const dmg2 = document.getElementById('editor-dmg2').value.trim();
+  if (!name) { toast('Ponele un nombre'); return; }
+  await applyXmlEdit(doc => {
+    const ch = doc.querySelector('character');
+    const it = createItemEl(doc, name, text);
+    if (ac) setChildText(doc, it, 'ac', String(parseInt(ac)||0));
+    if (dmg1) setChildText(doc, it, 'damage1H', dmg1);
+    if (dmg2) setChildText(doc, it, 'damage2H', dmg2);
+    setMods(doc, it, _modEdit);
+    ch.appendChild(it);
+  });
+  closeEditor();
+  toast(`${name} agregado al inventario`);
+}
+
+// ── Conjuros ────────────────────────────────────────────────────────
+function openSpellEditor(ab) {
+  const doc = currentDoc();
+  const el = doc && locateSpellEl(doc, ab.id);
+  if (!el) { toast('No se encontró el conjuro'); return; }
+  document.getElementById('editor-modal').innerHTML = `
+    <div class="modal-overlay" onclick="if(event.target===this)closeEditor()">
+      <div class="modal-sheet">
+        <div class="modal-head">
+          <span class="modal-title">✨ Conjuro</span>
+          <button class="modal-close" onclick="closeEditor()">✕</button>
+        </div>
+        <div class="modal-body">
+          <label class="editor-field-label">Nombre</label>
+          <input type="text" id="editor-name" class="editor-input" style="text-align:left;font-size:.95rem" value="${esc(getChildText(el,'name'))}">
+          <div class="editor-row3">
+            <div><label class="editor-field-label">Nivel (0=truco)</label><input type="number" id="editor-level" class="editor-input" value="${getChildText(el,'level')||0}" min="0" max="9"></div>
+            <div><label class="editor-field-label">Alcance</label><input type="text" id="editor-range" class="editor-input" style="font-size:.85rem" value="${esc(getChildText(el,'range'))}"></div>
+            <div><label class="editor-field-label">Duración</label><input type="text" id="editor-duration" class="editor-input" style="font-size:.85rem" value="${esc(getChildText(el,'duration'))}"></div>
+          </div>
+          <label class="editor-field-label" style="margin-top:8px">Tiempo de lanzamiento</label>
+          <input type="text" id="editor-time" class="editor-input" style="text-align:left;font-size:.85rem" value="${esc(getChildText(el,'time'))}" placeholder="1 acción / 1 bonus action / ...">
+          <label class="editor-field-label" style="margin-top:8px">Descripción</label>
+          <textarea id="editor-text" class="editor-input editor-textarea" style="text-align:left;font-size:.85rem;font-weight:400">${esc(getChildText(el,'text'))}</textarea>
+        </div>
+        ${editorFootRow('closeEditor()', `saveSpellEdit('${ab.id}')`)}
+      </div>
+    </div>`;
+}
+async function saveSpellEdit(spellId) {
+  const name = document.getElementById('editor-name').value.trim();
+  const level = document.getElementById('editor-level').value;
+  const range = document.getElementById('editor-range').value.trim();
+  const duration = document.getElementById('editor-duration').value.trim();
+  const time = document.getElementById('editor-time').value.trim();
+  const text = document.getElementById('editor-text').value;
+  if (!name) { toast('Ponele un nombre'); return; }
+  await applyXmlEdit(doc => {
+    const el = locateSpellEl(doc, spellId);
+    if (!el) return;
+    setChildText(doc, el, 'name', name);
+    setChildText(doc, el, 'level', String(parseInt(level)||0));
+    setChildText(doc, el, 'range', range);
+    setChildText(doc, el, 'duration', duration);
+    setChildText(doc, el, 'time', time);
+    setChildText(doc, el, 'text', text);
+  });
+  closeEditor();
+  toast(`${name} guardado`);
+}
+function openNewSpellEditor() {
+  const classes = char.classInfo || [];
+  if (!classes.length) { toast('El personaje no tiene clases lanzadoras cargadas'); return; }
+  const classPicker = classes.length > 1
+    ? `<label class="editor-field-label">Clase</label>
+       <select id="editor-classidx" class="editor-input" style="text-align:left;font-weight:400">
+         ${classes.map((c,i) => `<option value="${i}">${esc(c.name)}</option>`).join('')}
+       </select>`
+    : `<input type="hidden" id="editor-classidx" value="0">`;
+  document.getElementById('editor-modal').innerHTML = `
+    <div class="modal-overlay" onclick="if(event.target===this)closeEditor()">
+      <div class="modal-sheet">
+        <div class="modal-head">
+          <span class="modal-title">✨ Nuevo conjuro</span>
+          <button class="modal-close" onclick="closeEditor()">✕</button>
+        </div>
+        <div class="modal-body">
+          ${classPicker}
+          <label class="editor-field-label" style="margin-top:8px">Nombre</label>
+          <input type="text" id="editor-name" class="editor-input" style="text-align:left;font-size:.95rem" placeholder="Nombre del conjuro">
+          <div class="editor-row3">
+            <div><label class="editor-field-label">Nivel (0=truco)</label><input type="number" id="editor-level" class="editor-input" value="0" min="0" max="9"></div>
+            <div><label class="editor-field-label">Alcance</label><input type="text" id="editor-range" class="editor-input" style="font-size:.85rem" placeholder="18 m"></div>
+            <div><label class="editor-field-label">Duración</label><input type="text" id="editor-duration" class="editor-input" style="font-size:.85rem" placeholder="Instantánea"></div>
+          </div>
+          <label class="editor-field-label" style="margin-top:8px">Tiempo de lanzamiento</label>
+          <input type="text" id="editor-time" class="editor-input" style="text-align:left;font-size:.85rem" placeholder="1 acción">
+          <label class="editor-field-label" style="margin-top:8px">Descripción</label>
+          <textarea id="editor-text" class="editor-input editor-textarea" style="text-align:left;font-size:.85rem;font-weight:400"></textarea>
+        </div>
+        ${editorFootRow('closeEditor()', 'saveNewSpellEdit()')}
+      </div>
+    </div>`;
+}
+async function saveNewSpellEdit() {
+  const classIdx = parseInt(document.getElementById('editor-classidx').value) || 0;
+  const name = document.getElementById('editor-name').value.trim();
+  const level = document.getElementById('editor-level').value;
+  const range = document.getElementById('editor-range').value.trim();
+  const duration = document.getElementById('editor-duration').value.trim();
+  const time = document.getElementById('editor-time').value.trim();
+  const text = document.getElementById('editor-text').value.trim();
+  if (!name || !text) { toast('Completá nombre y descripción'); return; }
+  await applyXmlEdit(doc => {
+    createSpellEl(doc, classIdx, { name, text, level: parseInt(level)||0, range, duration, time });
+  });
+  closeEditor();
+  toast(`${name} agregado`);
 }
 
 
@@ -4413,7 +4917,8 @@ async function openCharacterSwitcher() {
         <div class="char-row-name">${esc(c.name)}${c.id===activeCharId ? ' <span class="char-row-tag">actual</span>' : ''}</div>
         <div class="char-row-meta">${esc(c.meta || '')}</div>
       </div>
-      <button class="char-row-btn" onclick="pickXmlFile('${c.id}')" title="Reimportar XML (p.ej. tras subir de nivel en FC5e)">⤓</button>
+      <button class="char-row-btn" onclick="pickXmlFile('${c.id}')" title="Reimportar XML (p.ej. tras subir de nivel en FC5e)">🔄</button>
+      <button class="char-row-btn" onclick="downloadCharacterXml('${c.id}')" title="Descargar XML (con las ediciones hechas acá adentro)">⬇</button>
       <button class="char-row-btn danger" onclick="deleteCharacter('${c.id}')" title="Eliminar">🗑</button>
     </div>`).join('');
   document.getElementById('characters-modal').innerHTML = `
@@ -4429,6 +4934,25 @@ async function openCharacterSwitcher() {
         </div>
       </div>
     </div>`;
+}
+// Descarga el XML tal como está guardado (con cualquier edición hecha en
+// la app ya adentro — ver §3.10). Sigue siendo un XML con la forma de
+// FC5e, así que en principio se podría volver a importar ahí — sin
+// garantía de que FC5e lo acepte de vuelta sin quejarse: solo se conoce
+// el formato de EXPORTACIÓN, nunca se probó el de importación real.
+async function downloadCharacterXml(id) {
+  const rec = await dbGetCharacter(id);
+  if (!rec || !rec.xmlText) { toast('No hay XML guardado para este personaje'); return; }
+  const blob = new Blob([rec.xmlText], { type: 'application/xml' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${(rec.name || 'personaje').replace(/[^\w\-]+/g, '_')}.xml`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  toast('XML descargado');
 }
 function closeCharacterSwitcher() {
   const el = document.getElementById('characters-modal');
