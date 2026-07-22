@@ -343,6 +343,19 @@ html,body{height:100%;background:var(--bg);color:var(--text);
 .mod-tiny-btn.danger{color:var(--red)}
 .add-content-row{display:flex;gap:8px;margin-bottom:8px}
 .add-content-row .footer-btn{margin-top:0;flex:1}
+.editor-checkbox{display:flex;align-items:center;gap:5px;font-size:.72rem;color:var(--muted);
+  background:var(--s2);border:1px solid var(--border2);border-radius:8px;padding:6px 8px;white-space:nowrap}
+.editor-checkbox input{margin:0}
+.editor-checkbox-field{display:flex;align-items:flex-end}
+.editor-weapon-props{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px}
+.mod-row-group{margin-bottom:8px;padding-bottom:8px;border-bottom:1px dashed var(--border2)}
+.mod-row-group:last-child{border-bottom:none;padding-bottom:0}
+.mod-row-value{margin-top:4px}
+.mod-mode-select{flex:1.6;min-width:0;background:var(--s2);border:1px solid var(--border2);color:var(--text);
+  border-radius:8px;padding:6px 4px;font-size:.7rem}
+.mod-scale-select{width:60px;flex-shrink:0;background:var(--s2);border:1px solid var(--border2);
+  color:var(--text);border-radius:8px;padding:6px 4px;font-size:.75rem;text-align:center}
+.mod-mode-label{flex:1;font-size:.68rem;color:var(--muted);font-style:italic;padding:6px 4px}
 
 #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);
   background:var(--s3);border:1px solid var(--border2);color:var(--text);
@@ -918,19 +931,19 @@ function parseFC5eXML(xml, equipOverrides) {
 
     const isWeapon    = type !== null && WEAPON_TYPES.has(type) && !!damage1H;
     const isBodyArmor = slot === 5 && ac > 0;
-    const isShield    = type === 14 && ac > 0;
+    const isShield    = type === 4;
     const isPotion    = type === 12;
     const isCurrency  = type === 15;
     const isAmmo      = type === 7;
     const isRing      = type === 11;
-    const isWondrous  = type === 14 && !isShield;
+    const isWondrous  = type === 14;
 
     // Equipable: cualquier arma (se puede empuñar), cualquier ítem que
     // YA tuvo un slot asignado por FC5e, cualquier ítem con al menos un
     // <mod> (bono numérico real), o un anillo/objeto maravilloso (type
     // 11/14) — estos últimos son inherentemente "para llevar puesto"
     // aunque el jugador no le haya asignado slot todavía en FC5e.
-    const equippable = isWeapon || slot > 0 || mods.length > 0 || isRing || isWondrous;
+    const equippable = isWeapon || isShield || slot > 0 || mods.length > 0 || isRing || isWondrous;
     const equipped = equipOv[id] !== undefined ? !!equipOv[id] : slot > 0;
 
     // Mundano sin <type> (mochila, antorcha, soga...), moneda y munición
@@ -1077,6 +1090,63 @@ function parseFC5eXML(xml, equipOverrides) {
   const saveMods = {};           // idx 0-5 -> { flat, profGrant }
   const skillMods = {};          // id 100-117 -> { flat, profGrant }
   const unknownMods = [];        // category/type sin mapeo confirmado — solo diagnóstico en consola
+  // category=0 ("Bono") SIN <value>: en el picker propio de FC5e esto
+  // ocupa el lugar del "+0" en un rango -30..+30 y significa "sumar el
+  // bonificador de competencia", igual que ya interpretaba esta app para
+  // las categorías 2/3/4 (confirmado empíricamente por el usuario contra
+  // el ítem real "Espina" — dos <mod type=1>, uno con valor +4 y otro SIN
+  // valor, y buildAbilities ya sabía sumarle prof al de arma — ver línea
+  // ~2190 — pero esta ruta genérica, usada para dotes/raza/clase/
+  // trasfondo, lo estaba descartando por completo). No se puede resolver
+  // en el momento porque `prof` todavía no es el valor final acá — se
+  // difiere y se resuelve un poco más abajo, apenas se conoce.
+  const bonoCompetenciaDeferred = []; // [{ type, source }]
+
+  // "= Modificador de [característica]" (pedido del usuario, más allá de
+  // "=competencia"): FC5e no tiene ningún <mod> nativo para esto, así que
+  // se codifica como una marca de texto al final de la <text> de la dote/
+  // ítem — inerte si se vuelve a ver en FC5e (el usuario confirmó que le
+  // sirve así), la app la interpreta como un bono más. Se arma/lee desde
+  // el editor (nunca a mano) — ver marcadorParaBono()/parsearMarcadores()
+  // en la sección de edición. Categoría 1 (puntuación de característica)
+  // queda deliberadamente sin soporte: `scores` alimenta el cálculo de
+  // `mods`, así que escalar una puntuación por OTRO modificador crearía
+  // una dependencia circular (se necesitaría `mods` para resolver el
+  // marcador, pero `mods` todavía no existiría). Categorías 0/2/3/4 sí,
+  // porque se resuelven después de que `mods` ya es definitivo, sin
+  // necesidad de retocar `scores`.
+  const MARKER_RE = /\[PWA-BONUS cat=(\d+) type=(\d+) ability=(str|dex|con|int|wis|cha)\]/g;
+  const markerDeferred = []; // [{ category, type, ability, source }]
+  function scanTextMarkers(el, sourceLabel) {
+    const text = $(el, 'text');
+    if (!text) return;
+    MARKER_RE.lastIndex = 0;
+    let m;
+    while ((m = MARKER_RE.exec(text))) {
+      markerDeferred.push({ category: m[1], type: parseInt(m[2]), ability: m[3], source: sourceLabel });
+    }
+  }
+
+  // Aplica un valor YA resuelto (número concreto) de categoría Bono al
+  // acumulador que le corresponde según su type — compartida entre la
+  // aplicación inmediata (mods con <value> real) y la diferida (mods sin
+  // valor, una vez se conoce `prof`, y los marcadores de texto "=
+  // Modificador de X", una vez se conocen `mods` — ver más abajo).
+  function applyBonoValue(type, val, sourceLabel, featRef) {
+    if (type === 9)  { hpBonusFlat += val; hpModsFound.push({ value: val, source: sourceLabel }); return; }
+    if (type === 0)  { profBonusFlat += val; return; } // bono directo al bonificador de competencia
+    if (type === 11) { savesBonusFlat += val; return; } // bono plano a TODAS las salvaciones (a diferencia de category=3, que es por salvación)
+    if (type === 12) { initiativeBonusFlat += val; return; }
+    if (type === 14) { passiveWisdomBonusFlat += val; return; }
+    if (type === 15) { unarmoredACBonusFlat += val; return; } // solo se aplica si el personaje termina usando una fórmula de CA sin armadura, ver cálculo de CA
+    const key = BONUS_TYPE_KEYS[type];
+    if (key) {
+      bonuses[key] += val;
+      if (type === 10 && featRef) acModFeats.add(featRef);
+    } else {
+      unknownMods.push({ category:'bonus', type, value:val, source:sourceLabel });
+    }
+  }
 
   function scanGenericMods(el, sourceLabel, isItem, featRef) {
     directMods(el).forEach(md => {
@@ -1086,21 +1156,13 @@ function parseFC5eXML(xml, equipOverrides) {
       const val = hasValue ? (parseInt($(md, 'value')) || 0) : null;
 
       if (catRaw === '' || catRaw === '0') {
-        if (val === null) return; // "Bonus" sin valor = placeholder/flag del ítem, no un bono real (ver Espina/Pico de Guerra)
-        if (isItem && ITEM_HANDLED_TYPES.has(type)) return; // ya cubierto por otra ruta
-        if (type === 9)  { hpBonusFlat += val; hpModsFound.push({ value: val, source: sourceLabel }); return; }
-        if (type === 0)  { profBonusFlat += val; return; } // bono directo al bonificador de competencia
-        if (type === 11) { savesBonusFlat += val; return; } // bono plano a TODAS las salvaciones (a diferencia de category=3, que es por salvación)
-        if (type === 12) { initiativeBonusFlat += val; return; }
-        if (type === 14) { passiveWisdomBonusFlat += val; return; }
-        if (type === 15) { unarmoredACBonusFlat += val; return; } // solo se aplica si el personaje termina usando una fórmula de CA sin armadura, ver cálculo de CA
-        const key = BONUS_TYPE_KEYS[type];
-        if (key) {
-          bonuses[key] += val;
-          if (type === 10 && featRef) acModFeats.add(featRef);
-        } else {
-          unknownMods.push({ category:'bonus', type, value:val, source:sourceLabel });
+        if (isItem && ITEM_HANDLED_TYPES.has(type)) return; // ya cubierto por otra ruta (incluida su versión "sin valor" — ver buildAbilities)
+        if (val === null) {
+          if (type === 0) return; // la competencia no puede sumarse a sí misma
+          bonoCompetenciaDeferred.push({ type, source: sourceLabel });
+          return;
         }
+        applyBonoValue(type, val, sourceLabel, featRef);
       } else if (catRaw === '3') {
         if (type >= 0 && type <= 5) {
           saveMods[type] = saveMods[type] || { flat:0, profGrant:false };
@@ -1138,15 +1200,21 @@ function parseFC5eXML(xml, equipOverrides) {
   scanGenericMods(ch.querySelector('race'), 'raza');
   scanGenericMods(ch.querySelector('background'), 'trasfondo');
   classEls.forEach(c => scanGenericMods(c, `clase (${$(c,'name')})`));
-  allFeats.forEach(f => scanGenericMods(f.el, f.name, false, f));
-  charFeats.forEach(f => scanGenericMods(f.el, f.name || 'dote de personaje'));
-  allItems.forEach(it => { if (it.equipped) scanGenericMods(it.el, it.name || 'ítem', true); });
+  allFeats.forEach(f => { scanGenericMods(f.el, f.name, false, f); scanTextMarkers(f.el, f.name); });
+  charFeats.forEach(f => { scanGenericMods(f.el, f.name || 'dote de personaje'); scanTextMarkers(f.el, f.name || 'dote de personaje'); });
+  allItems.forEach(it => { if (it.equipped) { scanGenericMods(it.el, it.name || 'ítem', true); scanTextMarkers(it.el, it.name || 'ítem'); } });
 
   // Aplicar el bono directo al bonificador de competencia (type=0, p.ej.
   // "Toque De Dorsaria" de Bo) ANTES de calcular habilidades/salvaciones/
   // CD de conjuro/ataques más abajo, para que se refleje en cascada en
   // todo lo que usa `prof` — no solo en un subconjunto.
   prof += profBonusFlat;
+  // Mods de categoría Bono sin valor (ver bonoCompetenciaDeferred más
+  // arriba) — se resuelven ACÁ, antes de que hpMax consuma hpBonusFlat
+  // (dos líneas más abajo): un mod type=9 ("Hit Points") sin valor tiene
+  // que sumarse a hpBonusFlat ANTES de esa suma, o llega tarde y se pierde
+  // en silencio (justo el bug que se estaba arreglando).
+  bonoCompetenciaDeferred.forEach(({ type, source }) => applyBonoValue(type, prof, source));
   const hpMaxBase = hpMax; // antes del bono type=9 — lo que se edita en el editor de HP (§3.9)
   hpMax += hpBonusFlat;
   if (Number.isNaN(hpCur)) hpCur = hpMax; // <hpCurrent> ausente en el XML
@@ -1181,6 +1249,33 @@ function parseFC5eXML(xml, equipOverrides) {
   const m = s => Math.floor((s - 10) / 2);
   const mods = { str:m(str), dex:m(dex), con:m(con), int:m(int_), wis:m(wis), cha:m(cha) };
   ABILITY_KEYS.forEach((k, i) => { mods[k] += abilityModBonus[i]; });
+
+  // Resolver los marcadores "= Modificador de X" (ver scanTextMarkers más
+  // arriba) — recién acá porque necesitan `mods` ya definitivo. type=9
+  // (Puntos de golpe) es un caso especial: hpMax ya consumió hpBonusFlat
+  // mucho más arriba, así que se suma directo a hpMax en vez de a
+  // hpBonusFlat (si no, llegaría tarde y se perdería en silencio).
+  // type=13 (Velocidad) NO está soportado por el mismo motivo pero sin
+  // una variable simple a la que sumarle tarde (`speed` ya se usó para
+  // armar el tracker de movimiento) — el editor no ofrece esa combinación.
+  markerDeferred.forEach(({ category, type, ability, source }) => {
+    const val = mods[ability];
+    const label = `${source} (=Mod.${ABILITY_ABBR_ES[ability]})`;
+    if (category === '0') {
+      if (type === 9) { hpMax += val; hpModsFound.push({ value: val, source: label }); return; }
+      applyBonoValue(type, val, label);
+    } else if (category === '2' && type >= 0 && type <= 5) {
+      mods[ABILITY_KEYS[type]] += val;
+      abilityModBreakdown[type].push({ source: label, value: val });
+    } else if (category === '3' && type >= 0 && type <= 5) {
+      saveMods[type] = saveMods[type] || { flat:0, profGrant:false };
+      saveMods[type].flat += val;
+    } else if (category === '4' && type >= 0 && type <= 17) {
+      const skillId = 100 + type;
+      skillMods[skillId] = skillMods[skillId] || { flat:0, profGrant:false };
+      skillMods[skillId].flat += val;
+    }
+  });
   // Desglose por característica para el editor de puntuaciones (§3.9): de
   // dónde sale cada número, no solo el total ya sumado.
   const scoreBreakdown = ABILITY_KEYS.map((k, i) => ({
@@ -1266,8 +1361,11 @@ function parseFC5eXML(xml, equipOverrides) {
   });
 
   // ── Armor Class calculation ──────────────────────────────────────
-  // isBodyArmor(slot=5+ac>0) / isShield(type=14+ac>0) — ver clasificación
-  // de allItems más arriba. mod type=10 = bonus mágico de CA y puede venir
+  // isBodyArmor(slot=5+ac>0) / isShield(type=4) — ver clasificación de
+  // allItems más arriba (type=4 confirmado empíricamente por el usuario
+  // contra el menú real de FC5e — antes de esto se confundía con
+  // Objeto Maravilloso, que también usa type=14, y un escudo real no
+  // sumaba su CA). mod type=10 = bonus mágico de CA y puede venir
   // de CUALQUIER ítem equipado (armadura, accesorio, o incluso un arma con
   // una propiedad tipo "Protector" — p.ej. un arma consciente que otorga
   // CA a quien la empuña). Solo cuentan los ítems actualmente equipados.
@@ -4147,7 +4245,10 @@ function createSpellEl(doc, classIdx, fields) {
 // Los mismos 16 tipos de "Bono" y los índices de característica/
 // salvación/habilidad ya documentados y validados en CONTEXTO_PROYECTO.md
 // §2.8 — reutilizados acá tal cual para no desalinear los índices que
-// escribe este editor con los que ya lee scanGenericMods.
+// escribe este editor con los que ya lee scanGenericMods. Rango -30..+30
+// confirmado por el usuario contra el picker real de FC5e (un valor
+// fuera de rango, aunque FC5e lo lee al importar, le hace crashear su
+// propio editor al intentar volver a abrirlo).
 const MOD_CATEGORY_OPTS = [
   ['0','Bono (ataque, daño, CA, PG, iniciativa…)'],
   ['1','Puntuación de característica'],
@@ -4162,24 +4263,79 @@ const MOD_TYPE_LABELS = {
   '3': ['Fuerza','Destreza','Constitución','Inteligencia','Sabiduría','Carisma'],
   '4': ['Acrobacias','Trato con animales','Arcanos','Atletismo','Engaño','Historia','Perspicacia','Intimidación','Investigación','Medicina','Naturaleza','Percepción','Interpretación','Persuasión','Religión','Juego de manos','Sigilo','Supervivencia'],
 };
+const MOD_CLAMP_MIN = -30, MOD_CLAMP_MAX = 30;
+function clampModValue(v) { return Math.max(MOD_CLAMP_MIN, Math.min(MOD_CLAMP_MAX, v)); }
+// "= Competencia" — disponible en cat 2/3/4 (siempre existió) y en cat 0
+// para cualquier type salvo el 0 (competencia no puede sumarse a sí misma).
+function modAllowsProf(m) {
+  return m.category === '2' || m.category === '3' || m.category === '4' ||
+    (m.category === '0' && m.type !== '0');
+}
+// "= Modificador de X" (marcador de texto, ver parseFC5eXML/scanTextMarkers)
+// — no soportado en cat 1 (crearía una dependencia circular con el
+// cálculo de puntuaciones) ni en cat 0/type 13 "Velocidad" (el tracker de
+// movimiento ya se arma antes de conocer los modificadores finales).
+function modAllowsScale(m) {
+  if (m.category === '1') return false;
+  if (m.category === '0' && (m.type === '0' || m.type === '13')) return false;
+  return true;
+}
+function modValueModeOptions(m) {
+  const opts = [['number','Número fijo']];
+  if (modAllowsProf(m)) opts.push(['prof','= Competencia']);
+  if (modAllowsScale(m)) opts.push(['scale','= Modificador de característica']);
+  return opts;
+}
 let _modEdit = [];
+// Trae los <mod> reales de un elemento MÁS los marcadores "=Modificador"
+// ya presentes en su <text> — todo junto en una sola lista editable,
+// para que el usuario vea y pueda tocar ambos tipos de bono desde el
+// mismo lugar.
+function getModEditEntries(el) {
+  const real = getMods(el).map(m => ({
+    category: String(m.category), type: String(m.type),
+    mode: m.value === null ? 'prof' : 'number',
+    value: m.value === null ? 0 : m.value, scaleAbility: 'str'
+  }));
+  const text = el ? (getChildText(el, 'text') || '') : '';
+  const markers = [];
+  const re = /\[PWA-BONUS cat=(\d+) type=(\d+) ability=(str|dex|con|int|wis|cha)\]/g;
+  let mm;
+  while ((mm = re.exec(text))) {
+    markers.push({ category: mm[1], type: mm[2], mode: 'scale', value: 0, scaleAbility: mm[3] });
+  }
+  return [...real, ...markers];
+}
 function modEditRowsHtml() {
   if (!_modEdit.length) return '<div class="editor-hint">Sin bonos propios. "+ Agregar bono" para sumar uno.</div>';
   return _modEdit.map((m, i) => {
-    const allowNoValue = m.category === '2' || m.category === '3' || m.category === '4';
     const typeOpts = (MOD_TYPE_LABELS[m.category] || []).map((lbl, ti) =>
       `<option value="${ti}" ${String(ti)===String(m.type)?'selected':''}>${esc(lbl)}</option>`).join('');
-    const valueField = (allowNoValue && m.value === null)
-      ? `<button class="mod-novalue-btn" onclick="modRowToggleNoValue(${i})" title="Toca para poner un número en vez de 'competencia'">= competencia</button>`
-      : `<input type="number" class="mod-value-input" value="${m.value ?? 0}" onchange="modRowSet(${i},'value',this.value)">`;
-    return `<div class="mod-row">
-      <select class="mod-cat-select" onchange="modRowSet(${i},'category',this.value)">
-        ${MOD_CATEGORY_OPTS.map(([v,l]) => `<option value="${v}" ${v===m.category?'selected':''}>${esc(l)}</option>`).join('')}
-      </select>
-      <select class="mod-type-select" onchange="modRowSet(${i},'type',this.value)">${typeOpts}</select>
-      ${valueField}
-      ${allowNoValue ? `<button class="mod-tiny-btn" onclick="modRowToggleNoValue(${i})" title="Alternar competencia / número">±</button>` : ''}
-      <button class="mod-tiny-btn danger" onclick="modRowRemove(${i})" title="Quitar">✕</button>
+    const modeOpts = modValueModeOptions(m).map(([v,l]) =>
+      `<option value="${v}" ${v===m.mode?'selected':''}>${esc(l)}</option>`).join('');
+    let valueField;
+    if (m.mode === 'prof') {
+      valueField = `<span class="mod-mode-label">bonificador de competencia</span>`;
+    } else if (m.mode === 'scale') {
+      const selfKey = m.category === '2' ? ABILITY_KEYS[parseInt(m.type)] : null;
+      const abilityOpts = ABILITY_KEYS.filter(k => k !== selfKey)
+        .map(k => `<option value="${k}" ${k===m.scaleAbility?'selected':''}>${ABILITY_ABBR_ES[k]}</option>`).join('');
+      valueField = `<select class="mod-scale-select" onchange="modRowSet(${i},'scaleAbility',this.value)">${abilityOpts}</select>`;
+    } else {
+      valueField = `<input type="number" class="mod-value-input" value="${m.value ?? 0}" min="${MOD_CLAMP_MIN}" max="${MOD_CLAMP_MAX}" onchange="modRowSet(${i},'value',this.value)">`;
+    }
+    return `<div class="mod-row-group">
+      <div class="mod-row">
+        <select class="mod-cat-select" onchange="modRowSet(${i},'category',this.value)">
+          ${MOD_CATEGORY_OPTS.map(([v,l]) => `<option value="${v}" ${v===m.category?'selected':''}>${esc(l)}</option>`).join('')}
+        </select>
+        <select class="mod-type-select" onchange="modRowSet(${i},'type',this.value)">${typeOpts}</select>
+        <button class="mod-tiny-btn danger" onclick="modRowRemove(${i})" title="Quitar">✕</button>
+      </div>
+      <div class="mod-row mod-row-value">
+        <select class="mod-mode-select" onchange="modRowSet(${i},'mode',this.value)">${modeOpts}</select>
+        ${valueField}
+      </div>
     </div>`;
   }).join('');
 }
@@ -4188,21 +4344,55 @@ function refreshModEditor() {
   if (el) el.innerHTML = modEditRowsHtml();
 }
 function modRowSet(i, field, value) {
-  if (field === 'category') { _modEdit[i].category = value; _modEdit[i].type = '0'; _modEdit[i].value = 0; }
-  else if (field === 'type') { _modEdit[i].type = value; }
-  else if (field === 'value') { _modEdit[i].value = parseInt(value) || 0; }
-  refreshModEditor();
-}
-function modRowToggleNoValue(i) {
-  _modEdit[i].value = (_modEdit[i].value === null) ? 0 : null;
+  const m = _modEdit[i];
+  if (field === 'category') {
+    m.category = value; m.type = '0'; m.mode = 'number'; m.value = 0; m.scaleAbility = 'str';
+  } else if (field === 'type') {
+    m.type = value;
+    if (m.mode === 'prof' && !modAllowsProf(m)) m.mode = 'number';
+    if (m.mode === 'scale' && !modAllowsScale(m)) m.mode = 'number';
+    if (m.mode === 'scale' && m.category === '2' && m.scaleAbility === ABILITY_KEYS[parseInt(m.type)]) {
+      m.scaleAbility = ABILITY_KEYS.find(k => k !== m.scaleAbility);
+    }
+  } else if (field === 'mode') {
+    m.mode = value;
+    if (value === 'scale' && m.category === '2' && m.scaleAbility === ABILITY_KEYS[parseInt(m.type)]) {
+      m.scaleAbility = ABILITY_KEYS.find(k => k !== m.scaleAbility);
+    }
+  } else if (field === 'value') {
+    m.value = clampModValue(parseInt(value) || 0);
+  } else if (field === 'scaleAbility') {
+    m.scaleAbility = value;
+  }
   refreshModEditor();
 }
 function modRowRemove(i) { _modEdit.splice(i, 1); refreshModEditor(); }
-function modRowAdd() { _modEdit.push({ category:'0', type:'1', value:0 }); refreshModEditor(); }
+function modRowAdd() { _modEdit.push({ category:'0', type:'1', mode:'number', value:0, scaleAbility:'str' }); refreshModEditor(); }
 function modEditorBlock() {
   return `<div class="editor-subhead">Bonos propios</div>
     <div id="mod-editor-rows">${modEditRowsHtml()}</div>
     <button class="footer-btn" style="margin-top:6px" onclick="modRowAdd()">+ Agregar bono</button>`;
+}
+
+// Aplica texto + lista de bonos editada a un elemento: los bonos "número"
+// y "competencia" se escriben como <mod> real; los "= Modificador de X"
+// se codifican como marcador al final del texto (ver scanTextMarkers en
+// parseFC5eXML) — nunca ambas cosas para la misma fila. Se limpian los
+// marcadores viejos del texto antes de reescribirlos, para no acumular
+// duplicados cada vez que se guarda.
+const TEXT_MARKER_RE = /\s*\[PWA-BONUS cat=\d+ type=\d+ ability=(?:str|dex|con|int|wis|cha)\]/g;
+function stripTextMarkers(text) {
+  return (text || '').replace(TEXT_MARKER_RE, '').replace(/\s+$/, '');
+}
+function applyTextAndMods(doc, el, rawText, modEditList) {
+  const cleanText = stripTextMarkers(rawText);
+  const markers = modEditList.filter(m => m.mode === 'scale')
+    .map(m => `[PWA-BONUS cat=${m.category} type=${m.type} ability=${m.scaleAbility}]`);
+  setChildText(doc, el, 'text', cleanText + (markers.length ? '\n\n' + markers.join(' ') : ''));
+  const realMods = modEditList.filter(m => m.mode !== 'scale').map(m => ({
+    category: m.category, type: m.type, value: m.mode === 'prof' ? null : clampModValue(m.value)
+  }));
+  setMods(doc, el, realMods);
 }
 
 // ── Dotes / rasgos (<feat>) ────────────────────────────────────────────
@@ -4211,8 +4401,8 @@ function openFeatEditor(ab) {
   const doc = currentDoc();
   const el = doc && locateFeatEl(doc, ab.source, ab.name);
   const name = el ? getChildText(el, 'name') : ab.name;
-  const text = el ? getChildText(el, 'text') : (ab.full || ab.desc || '');
-  _modEdit = getMods(el);
+  const text = stripTextMarkers(el ? getChildText(el, 'text') : (ab.full || ab.desc || ''));
+  _modEdit = getModEditEntries(el);
   _editingFeatRef = { source: ab.source, name: ab.name };
   document.getElementById('editor-modal').innerHTML = `
     <div class="modal-overlay" onclick="if(event.target===this)closeEditor()">
@@ -4239,18 +4429,35 @@ async function saveFeatEdit() {
   if (!name) { toast('Ponele un nombre'); return; }
   if (text.trim().length < 30) { toast('El texto necesita al menos 30 caracteres para verse como tarjeta'); return; }
   const ref = _editingFeatRef;
+  const modsSnapshot = _modEdit;
   await applyXmlEdit(doc => {
     const el = locateFeatEl(doc, ref.source, ref.name);
     if (!el) return;
     setChildText(doc, el, 'name', name);
-    setChildText(doc, el, 'text', text);
-    setMods(doc, el, _modEdit);
+    applyTextAndMods(doc, el, text, modsSnapshot);
   });
   closeEditor();
   toast(`${name} guardado`);
 }
+function featParentTargetEl(doc, parentKind) {
+  const ch = doc.querySelector('character');
+  if (parentKind === 'race') return ch.querySelector('race') || ch;
+  if (parentKind === 'background') return ch.querySelector('background') || ch;
+  if (parentKind && parentKind.startsWith('class:')) {
+    const idx = parseInt(parentKind.split(':')[1]);
+    return [...ch.querySelectorAll('class')][idx] || ch;
+  }
+  return ch;
+}
 function openNewFeatEditor() {
   _modEdit = [];
+  const classes = char.classInfo || [];
+  const parentOpts = [
+    ['character', 'Dote de personaje (recomendado)'],
+    ['race', `Raza (${char.raceName})`],
+    ['background', 'Trasfondo'],
+    ...classes.map((c, i) => [`class:${i}`, `Clase: ${c.name}`]),
+  ];
   document.getElementById('editor-modal').innerHTML = `
     <div class="modal-overlay" onclick="if(event.target===this)closeEditor()">
       <div class="modal-sheet">
@@ -4259,7 +4466,12 @@ function openNewFeatEditor() {
           <button class="modal-close" onclick="closeEditor()">✕</button>
         </div>
         <div class="modal-body">
-          <label class="editor-field-label">Nombre</label>
+          <label class="editor-field-label">Dónde va</label>
+          <select id="editor-parent" class="editor-input" style="text-align:left;font-weight:400">
+            ${parentOpts.map(([v,l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join('')}
+          </select>
+          <div class="editor-hint">Define de qué origen cuelga en el XML — se ve reflejado en el color/etiqueta de la tarjeta.</div>
+          <label class="editor-field-label" style="margin-top:8px">Nombre</label>
           <input type="text" id="editor-name" class="editor-input" style="text-align:left;font-size:.95rem" placeholder="Nombre de la dote/rasgo">
           <label class="editor-field-label" style="margin-top:8px">Descripción</label>
           <textarea id="editor-text" class="editor-input editor-textarea" style="text-align:left;font-size:.85rem;font-weight:400" placeholder="Texto de la habilidad — de acá se detecta automáticamente si es Acción/Adicional/Reacción/pasiva, igual que con el resto"></textarea>
@@ -4273,25 +4485,106 @@ function openNewFeatEditor() {
 async function saveNewFeatEdit() {
   const name = document.getElementById('editor-name').value.trim();
   const text = document.getElementById('editor-text').value.trim();
+  const parentKind = document.getElementById('editor-parent').value;
   if (!name || !text) { toast('Completá nombre y descripción'); return; }
   if (text.length < 30) { toast('El texto necesita al menos 30 caracteres para verse como tarjeta'); return; }
+  const modsSnapshot = _modEdit;
   await applyXmlEdit(doc => {
-    const ch = doc.querySelector('character');
-    const f = createFeatEl(doc, name, text);
-    setMods(doc, f, _modEdit);
-    ch.appendChild(f); // dote a nivel de personaje — mismo lugar que charFeats (ver 2.x)
+    const parent = featParentTargetEl(doc, parentKind);
+    const f = createFeatEl(doc, name, '');
+    applyTextAndMods(doc, f, text, modsSnapshot);
+    parent.appendChild(f); // dote a nivel de personaje — mismo lugar que charFeats (ver 2.x) — u otro origen elegido arriba
   });
   closeEditor();
   toast(`${name} agregado`);
 }
 
 // ── Ítems ───────────────────────────────────────────────────────────
+// ── Ítems ───────────────────────────────────────────────────────────
+// Los 16 tipos y sus números confirmados empíricamente por el usuario
+// contra el picker real de FC5e (Prueba_De_Item_Types.xml) — corrigió
+// una idea vieja de este código, que confundía Escudo (type=4) con
+// Objeto Maravilloso (type=14) y por eso un escudo real no sumaba su CA
+// (ver isShield/isWondrous más arriba). '' = sin <type> = bártulo mundano.
+const ITEM_TYPE_OPTS = [
+  ['', 'Bártulo (Adventuring Gear)'],
+  ['1', 'Armadura ligera'], ['2', 'Armadura media'], ['3', 'Armadura pesada'], ['4', 'Escudo'],
+  ['5', 'Arma cuerpo a cuerpo'], ['6', 'Arma a distancia'], ['7', 'Munición'],
+  ['8', 'Vara (Rod)'], ['9', 'Bastón (Staff)'], ['10', 'Varita (Wand)'],
+  ['11', 'Anillo'], ['12', 'Poción'], ['13', 'Pergamino'],
+  ['14', 'Objeto maravilloso'], ['15', 'Riqueza (moneda)'],
+];
+// Bits confirmados contra el mismo archivo de prueba (66 = Sutileza+
+// Especial en un arma cuerpo a cuerpo real; 1025 = Munición+Marcial en
+// una a distancia real).
+const WEAPON_PROPERTY_BITS = [
+  [1,'Munición'], [2,'Sutileza'], [4,'Pesada'], [8,'Ligera'], [16,'Recarga'],
+  [32,'Alcance'], [64,'Especial'], [128,'Arrojadiza'], [256,'A dos manos'],
+  [512,'Versátil'], [1024,'Marcial'],
+];
+function itemTypeExtraFieldsHtml(type, v) {
+  v = v || {};
+  if (type === '1' || type === '2' || type === '3') {
+    return `<div class="editor-row3">
+      <div><label class="editor-field-label">CA</label><input type="number" id="editor-ac" class="editor-input" value="${v.ac ?? ''}" placeholder="—"></div>
+      <div><label class="editor-field-label">Fuerza req.</label><input type="number" id="editor-strength" class="editor-input" value="${v.strength ?? ''}" placeholder="—"></div>
+      <div class="editor-checkbox-field"><label class="editor-checkbox"><input type="checkbox" id="editor-stealth" ${v.stealth ? 'checked' : ''}> Desv. Sigilo</label></div>
+    </div>`;
+  }
+  if (type === '4') {
+    return `<label class="editor-field-label">CA (bono que aporta)</label>
+      <input type="number" id="editor-ac" class="editor-input" value="${v.ac ?? ''}" placeholder="2">`;
+  }
+  if (type === '5' || type === '6') {
+    const bits = v.weaponProperty || 0;
+    return `<div class="editor-row3">
+        <div><label class="editor-field-label">Daño 1 mano</label><input type="text" id="editor-dmg1" class="editor-input" style="font-size:.85rem" value="${esc(v.damage1H||'')}" placeholder="1d8"></div>
+        <div><label class="editor-field-label">Daño 2 manos</label><input type="text" id="editor-dmg2" class="editor-input" style="font-size:.85rem" value="${esc(v.damage2H||'')}" placeholder="—"></div>
+      </div>
+      <div class="editor-subhead">Propiedades</div>
+      <div class="editor-weapon-props">
+        ${WEAPON_PROPERTY_BITS.map(([bit,lbl]) => `<label class="editor-checkbox"><input type="checkbox" class="editor-wp-bit" value="${bit}" ${bits & bit ? 'checked' : ''}> ${lbl}</label>`).join('')}
+      </div>`;
+  }
+  return '';
+}
+function onItemTypeChange() {
+  const type = document.getElementById('editor-type').value;
+  document.getElementById('item-extra-fields').innerHTML = itemTypeExtraFieldsHtml(type, {});
+}
+function readItemExtraFields() {
+  const g = id => document.getElementById(id);
+  const acEl = g('editor-ac'), strEl = g('editor-strength'), stealthEl = g('editor-stealth');
+  const dmg1El = g('editor-dmg1'), dmg2El = g('editor-dmg2');
+  const isWeaponFields = !!(dmg1El || dmg2El);
+  return {
+    ac: acEl ? acEl.value : '',
+    strength: strEl ? strEl.value : '',
+    stealth: stealthEl ? stealthEl.checked : null,
+    damage1H: dmg1El ? dmg1El.value.trim() : '',
+    damage2H: dmg2El ? dmg2El.value.trim() : '',
+    weaponProperty: isWeaponFields
+      ? [...document.querySelectorAll('.editor-wp-bit:checked')].reduce((s,c) => s + parseInt(c.value), 0)
+      : null,
+  };
+}
+function applyItemExtraFields(doc, el, f) {
+  if (f.ac !== '') setChildText(doc, el, 'ac', String(parseInt(f.ac) || 0));
+  if (f.strength !== '') setChildText(doc, el, 'strength', String(parseInt(f.strength) || 0));
+  if (f.stealth !== null) setChildText(doc, el, 'stealth', f.stealth ? '1' : '0');
+  if (f.damage1H) setChildText(doc, el, 'damage1H', f.damage1H);
+  if (f.damage2H) setChildText(doc, el, 'damage2H', f.damage2H);
+  if (f.weaponProperty !== null) setChildText(doc, el, 'weaponProperty', String(f.weaponProperty));
+}
+
 function openItemEditor(itemId) {
   const it = (char.items || []).find(i => i.id === itemId);
   if (!it) { toast('No se encontró el ítem'); return; }
   const doc = currentDoc();
   const el = doc && locateItemEl(doc, itemId);
-  _modEdit = getMods(el);
+  _modEdit = getModEditEntries(el);
+  const curType = el ? (getChildText(el, 'type') || '') : '';
+  const vals = { ac: it.ac || '', strength: '', stealth: false, damage1H: it.damage1H || '', damage2H: it.damage2H || '', weaponProperty: it.weaponProperty || 0 };
   document.getElementById('editor-modal').innerHTML = `
     <div class="modal-overlay" onclick="if(event.target===this)closeEditor()">
       <div class="modal-sheet">
@@ -4300,15 +4593,15 @@ function openItemEditor(itemId) {
           <button class="modal-close" onclick="closeEditor()">✕</button>
         </div>
         <div class="modal-body">
-          <label class="editor-field-label">Nombre</label>
+          <label class="editor-field-label">Tipo</label>
+          <select id="editor-type" class="editor-input" style="text-align:left;font-weight:400" onchange="onItemTypeChange()">
+            ${ITEM_TYPE_OPTS.map(([v,l]) => `<option value="${v}" ${v===curType?'selected':''}>${esc(l)}</option>`).join('')}
+          </select>
+          <label class="editor-field-label" style="margin-top:8px">Nombre</label>
           <input type="text" id="editor-name" class="editor-input" style="text-align:left;font-size:.95rem" value="${esc(it.name)}">
           <label class="editor-field-label" style="margin-top:8px">Descripción</label>
-          <textarea id="editor-text" class="editor-input editor-textarea" style="text-align:left;font-size:.85rem;font-weight:400">${esc(it.text||'')}</textarea>
-          <div class="editor-row3">
-            <div><label class="editor-field-label">CA</label><input type="number" id="editor-ac" class="editor-input" value="${it.ac||''}" placeholder="—"></div>
-            <div><label class="editor-field-label">Daño 1 mano</label><input type="text" id="editor-dmg1" class="editor-input" style="font-size:.85rem" value="${esc(it.damage1H||'')}" placeholder="1d8"></div>
-            <div><label class="editor-field-label">Daño 2 manos</label><input type="text" id="editor-dmg2" class="editor-input" style="font-size:.85rem" value="${esc(it.damage2H||'')}" placeholder="—"></div>
-          </div>
+          <textarea id="editor-text" class="editor-input editor-textarea" style="text-align:left;font-size:.85rem;font-weight:400">${esc(stripTextMarkers(it.text||''))}</textarea>
+          <div id="item-extra-fields">${itemTypeExtraFieldsHtml(curType, vals)}</div>
           ${modEditorBlock()}
         </div>
         ${editorFootRow('closeEditor()', `saveItemEdit('${itemId}')`)}
@@ -4318,19 +4611,17 @@ function openItemEditor(itemId) {
 async function saveItemEdit(itemId) {
   const name = document.getElementById('editor-name').value.trim();
   const text = document.getElementById('editor-text').value;
-  const ac = document.getElementById('editor-ac').value;
-  const dmg1 = document.getElementById('editor-dmg1').value.trim();
-  const dmg2 = document.getElementById('editor-dmg2').value.trim();
+  const type = document.getElementById('editor-type').value;
+  const extra = readItemExtraFields();
   if (!name) { toast('Ponele un nombre'); return; }
+  const modsSnapshot = _modEdit;
   await applyXmlEdit(doc => {
     const el = locateItemEl(doc, itemId);
     if (!el) return;
     setChildText(doc, el, 'name', name);
-    setChildText(doc, el, 'text', text);
-    if (ac !== '') setChildText(doc, el, 'ac', String(parseInt(ac)||0));
-    if (dmg1) setChildText(doc, el, 'damage1H', dmg1);
-    if (dmg2) setChildText(doc, el, 'damage2H', dmg2);
-    setMods(doc, el, _modEdit);
+    setChildText(doc, el, 'type', type);
+    applyItemExtraFields(doc, el, extra);
+    applyTextAndMods(doc, el, text, modsSnapshot);
   });
   closeEditor();
   toast(`${name} guardado`);
@@ -4345,15 +4636,15 @@ function openNewItemEditor() {
           <button class="modal-close" onclick="closeEditor()">✕</button>
         </div>
         <div class="modal-body">
-          <label class="editor-field-label">Nombre</label>
+          <label class="editor-field-label">Tipo</label>
+          <select id="editor-type" class="editor-input" style="text-align:left;font-weight:400" onchange="onItemTypeChange()">
+            ${ITEM_TYPE_OPTS.map(([v,l]) => `<option value="${v}" ${v==='14'?'selected':''}>${esc(l)}</option>`).join('')}
+          </select>
+          <label class="editor-field-label" style="margin-top:8px">Nombre</label>
           <input type="text" id="editor-name" class="editor-input" style="text-align:left;font-size:.95rem" placeholder="Nombre del objeto">
           <label class="editor-field-label" style="margin-top:8px">Descripción</label>
           <textarea id="editor-text" class="editor-input editor-textarea" style="text-align:left;font-size:.85rem;font-weight:400" placeholder="Qué hace (opcional)"></textarea>
-          <div class="editor-row3">
-            <div><label class="editor-field-label">CA</label><input type="number" id="editor-ac" class="editor-input" placeholder="—"></div>
-            <div><label class="editor-field-label">Daño 1 mano</label><input type="text" id="editor-dmg1" class="editor-input" style="font-size:.85rem" placeholder="1d8"></div>
-            <div><label class="editor-field-label">Daño 2 manos</label><input type="text" id="editor-dmg2" class="editor-input" style="font-size:.85rem" placeholder="—"></div>
-          </div>
+          <div id="item-extra-fields">${itemTypeExtraFieldsHtml('14', {})}</div>
           <div class="editor-hint">Se agrega desequipado — tocá "Equipar" desde el Inventario después de guardar.</div>
           ${modEditorBlock()}
         </div>
@@ -4364,17 +4655,16 @@ function openNewItemEditor() {
 async function saveNewItemEdit() {
   const name = document.getElementById('editor-name').value.trim();
   const text = document.getElementById('editor-text').value.trim();
-  const ac = document.getElementById('editor-ac').value;
-  const dmg1 = document.getElementById('editor-dmg1').value.trim();
-  const dmg2 = document.getElementById('editor-dmg2').value.trim();
+  const type = document.getElementById('editor-type').value;
+  const extra = readItemExtraFields();
   if (!name) { toast('Ponele un nombre'); return; }
+  const modsSnapshot = _modEdit;
   await applyXmlEdit(doc => {
     const ch = doc.querySelector('character');
-    const it = createItemEl(doc, name, text);
-    if (ac) setChildText(doc, it, 'ac', String(parseInt(ac)||0));
-    if (dmg1) setChildText(doc, it, 'damage1H', dmg1);
-    if (dmg2) setChildText(doc, it, 'damage2H', dmg2);
-    setMods(doc, it, _modEdit);
+    const it = createItemEl(doc, name, '');
+    setChildText(doc, it, 'type', type);
+    applyItemExtraFields(doc, it, extra);
+    applyTextAndMods(doc, it, text, modsSnapshot);
     ch.appendChild(it);
   });
   closeEditor();
