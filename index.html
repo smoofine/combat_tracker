@@ -324,8 +324,10 @@ html,body{height:100%;background:var(--bg);color:var(--text);
   color:var(--muted);margin:10px 0 4px}
 .modal-foot-row{display:flex;gap:8px;padding:10px 14px;border-top:1px solid var(--border)}
 .modal-foot-row .footer-btn{margin-top:0;flex:1}
+.modal-foot-row .footer-btn.icon-only{flex:0 0 44px}
 .footer-btn.primary{background:var(--blue-bg);border-color:var(--blue-border);
   color:var(--blue);font-weight:600}
+.footer-btn.danger{color:var(--red);border-color:var(--red-border)}
 .editor-textarea{min-height:90px;resize:vertical;line-height:1.4}
 .editor-row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:8px}
 .editor-row3 .editor-input{font-size:.85rem;padding:7px 6px}
@@ -874,13 +876,13 @@ function parseFC5eXML(xml, equipOverrides) {
     }
     direct.forEach(f => {
       const n = $(f,'name'), tx = $(f,'text');
-      if (n.length > 1) allFeats.push({ name:n, text:tx, source:'class', classIdx, el:f });
+      if (n.length > 1) allFeats.push({ name:n, text:tx, source:'class', classIdx, el:f, deleted: $(f,'pwaDeleted')==='1' });
     });
   });
   ['race','background'].forEach(src => {
     $$(ch.querySelector(src), 'feat').forEach(f => {
       const n = $(f,'name'), tx = $(f,'text');
-      if (n.length > 1) allFeats.push({ name:n, text:tx, source:src, el:f });
+      if (n.length > 1) allFeats.push({ name:n, text:tx, source:src, el:f, deleted: $(f,'pwaDeleted')==='1' });
     });
   });
 
@@ -894,7 +896,7 @@ function parseFC5eXML(xml, equipOverrides) {
   // pasiva/etc.), etiquetadas source:'feat' para distinguirlas en la UI.
   const charFeats = [...ch.children]
     .filter(c => c.tagName.toLowerCase() === 'feat')
-    .map(f => ({ name:$(f,'name'), text:$(f,'text'), source:'feat', el:f }))
+    .map(f => ({ name:$(f,'name'), text:$(f,'text'), source:'feat', el:f, deleted: $(f,'pwaDeleted')==='1' }))
     .filter(f => f.name.length > 1);
 
   // ── Items: metadatos + estado de equipado ──────────────────────────
@@ -944,7 +946,13 @@ function parseFC5eXML(xml, equipOverrides) {
     // 11/14) — estos últimos son inherentemente "para llevar puesto"
     // aunque el jugador no le haya asignado slot todavía en FC5e.
     const equippable = isWeapon || isShield || slot > 0 || mods.length > 0 || isRing || isWondrous;
-    const equipped = equipOv[id] !== undefined ? !!equipOv[id] : slot > 0;
+    // Ítem borrado (§3.x, ver "Borrar dote/ítem/conjuro"): se fuerza
+    // equipped=false pase lo que diga equipOv/<slot>, así todas las rutas
+    // de contribución mecánica que ya filtran por `equipped` (bonos de
+    // característica, CA, CD/ataque de conjuro, ataques de arma) lo
+    // excluyen automáticamente sin tocarlas una por una.
+    const deleted = $(el, 'pwaDeleted') === '1';
+    const equipped = deleted ? false : (equipOv[id] !== undefined ? !!equipOv[id] : slot > 0);
 
     // Mundano sin <type> (mochila, antorcha, soga...), moneda y munición
     // no generan tarjeta de habilidad — son ruido, no rasgos accionables.
@@ -965,7 +973,7 @@ function parseFC5eXML(xml, equipOverrides) {
       damage1H, damage2H: $(el,'damage2H'), weaponProperty: parseInt($(el,'weaponProperty'))||0,
       magic: $(el,'magic') === '1', quantity: $(el,'quantity'), value: $(el,'value'), weight: $(el,'weight'),
       isWeapon, isBodyArmor, isShield, isPotion, isCurrency, isAmmo, isRing, isWondrous,
-      equippable, equipped, showAsAbility, category
+      equippable, equipped, showAsAbility, category, deleted
     };
   });
   const itemFeats = [];
@@ -1001,8 +1009,8 @@ function parseFC5eXML(xml, equipOverrides) {
   addAbilityBonus(ch.querySelector('race'), raceName || 'raza');
   addAbilityBonus(ch.querySelector('background'), 'trasfondo');
   classEls.forEach(c => addAbilityBonus(c, $(c, 'name') || 'clase'));
-  allFeats.forEach(f => addAbilityBonus(f.el, f.name));
-  charFeats.forEach(f => addAbilityBonus(f.el, f.name)); // dotes a nivel de personaje
+  allFeats.filter(f => !f.deleted).forEach(f => addAbilityBonus(f.el, f.name));
+  charFeats.filter(f => !f.deleted).forEach(f => addAbilityBonus(f.el, f.name)); // dotes a nivel de personaje
   allItems.forEach(it => { if (it.equipped) addAbilityBonus(it.el, it.name); });
 
   // ── Modifiers genéricos de FC5e (bonos más allá de puntuación de
@@ -1058,22 +1066,26 @@ function parseFC5eXML(xml, equipOverrides) {
   // esa base al equipar/desequipar, igual que ya se hacía con velocidad
   // y CA.
   //
-  // Los tipos 1/2/3/4/5/6/7/8/10 en ÍTEMS ya se leen (o deberían leerse)
-  // por rutas separadas más abajo: CA de armadura/escudo/accesorio, CD y
-  // ataque de conjuros globales, y — sobre todo — el bono propio de CADA
-  // arma dentro de buildAbilities (p.ej. "Moon Sickle +3" o "Staff of the
-  // Woodlands" solo dan su bono a ataques hechos CON ESA arma, nunca a
-  // todas las armas del personaje). Aquí se excluyen los ítems para esos
-  // 9 tipos y solo se agregan los de raza/clase/trasfondo/dotes (bonos
-  // realmente de personaje, como un Fighting Style), que antes no se
-  // leían en absoluto. Solo 13 (velocidad, p.ej. un objeto tipo "Botas de
-  // Velocidad") no tiene ruta propia y sí se agrega también desde ítems.
+  // Los tipos 7/8/10 en ÍTEMS siempre se leen por una ruta global aparte
+  // (CD/ataque de conjuro, CA — ver más abajo), sea o no el ítem un arma.
+  // Los tipos 1-6 (Weapon/Melee/Ranged Attacks/Damage) en cambio SOLO se
+  // excluyen acá cuando el ítem ES un arma — ahí los toma el bono propio
+  // de CADA arma dentro de buildAbilities (p.ej. "Moon Sickle +3" solo da
+  // su bono a ataques hechos CON ESA arma). Si el ítem NO es un arma (un
+  // anillo, objeto maravilloso, etc. con, por ejemplo, "Ranged Attacks
+  // (+)"), no hay ninguna otra ruta que lo lea — tiene que sumarse acá
+  // como bono global de personaje, igual que un Fighting Style de dote.
+  // Bug real encontrado con el personaje de prueba "Prueba Type 15 Y
+  // Otros" (tipos 4/5/6 en accesorios no-arma): antes de esto se perdían
+  // en silencio porque el código asumía que TODO ítem con estos tipos
+  // era un arma.
+  const ITEM_GLOBAL_TYPES = new Set([7, 8, 10]);
+  const ITEM_WEAPON_ONLY_TYPES = new Set([1, 2, 3, 4, 5, 6]);
   const BONUS_TYPE_KEYS = {
     1:'weaponAtk', 2:'weaponDmg', 3:'meleeAtk', 4:'meleeDmg',
     5:'rangedAtk', 6:'rangedDmg', 7:'spellAtkBonus', 8:'spellDcBonus',
     10:'acBonus', 13:'speedBonus'
   };
-  const ITEM_HANDLED_TYPES = new Set([1, 2, 3, 4, 5, 6, 7, 8, 10]);
   const bonuses = { weaponAtk:0, weaponDmg:0, meleeAtk:0, meleeDmg:0, rangedAtk:0, rangedDmg:0,
                      spellDcBonus:0, spellAtkBonus:0, acBonus:0, speedBonus:0 };
   const acModFeats = new Set();  // feats con CA vía <mod> numérico — flatFeatACBonus() los excluye para no duplicar
@@ -1148,7 +1160,7 @@ function parseFC5eXML(xml, equipOverrides) {
     }
   }
 
-  function scanGenericMods(el, sourceLabel, isItem, featRef) {
+  function scanGenericMods(el, sourceLabel, isItem, featRef, isWeaponItem) {
     directMods(el).forEach(md => {
       const catRaw = $(md, 'category');
       const type = parseInt($(md, 'type')) || 0;
@@ -1156,7 +1168,8 @@ function parseFC5eXML(xml, equipOverrides) {
       const val = hasValue ? (parseInt($(md, 'value')) || 0) : null;
 
       if (catRaw === '' || catRaw === '0') {
-        if (isItem && ITEM_HANDLED_TYPES.has(type)) return; // ya cubierto por otra ruta (incluida su versión "sin valor" — ver buildAbilities)
+        if (isItem && ITEM_GLOBAL_TYPES.has(type)) return; // ya cubierto por otra ruta global (CD/ataque de conjuro, CA)
+        if (isItem && isWeaponItem && ITEM_WEAPON_ONLY_TYPES.has(type)) return; // ya cubierto por el bono propio del arma (ver buildAbilities)
         if (val === null) {
           if (type === 0) return; // la competencia no puede sumarse a sí misma
           bonoCompetenciaDeferred.push({ type, source: sourceLabel });
@@ -1200,9 +1213,9 @@ function parseFC5eXML(xml, equipOverrides) {
   scanGenericMods(ch.querySelector('race'), 'raza');
   scanGenericMods(ch.querySelector('background'), 'trasfondo');
   classEls.forEach(c => scanGenericMods(c, `clase (${$(c,'name')})`));
-  allFeats.forEach(f => { scanGenericMods(f.el, f.name, false, f); scanTextMarkers(f.el, f.name); });
-  charFeats.forEach(f => { scanGenericMods(f.el, f.name || 'dote de personaje'); scanTextMarkers(f.el, f.name || 'dote de personaje'); });
-  allItems.forEach(it => { if (it.equipped) { scanGenericMods(it.el, it.name || 'ítem', true); scanTextMarkers(it.el, it.name || 'ítem'); } });
+  allFeats.filter(f => !f.deleted).forEach(f => { scanGenericMods(f.el, f.name, false, f); scanTextMarkers(f.el, f.name); });
+  charFeats.filter(f => !f.deleted).forEach(f => { scanGenericMods(f.el, f.name || 'dote de personaje'); scanTextMarkers(f.el, f.name || 'dote de personaje'); });
+  allItems.forEach(it => { if (it.equipped) { scanGenericMods(it.el, it.name || 'ítem', true, null, it.isWeapon); scanTextMarkers(it.el, it.name || 'ítem'); } });
 
   // Aplicar el bono directo al bonificador de competencia (type=0, p.ej.
   // "Toque De Dorsaria" de Bo) ANTES de calcular habilidades/salvaciones/
@@ -1315,8 +1328,8 @@ function parseFC5eXML(xml, equipOverrides) {
     : [];
   const profSources = [
     ch.querySelector('race'), ch.querySelector('background'), ...classEls,
-    ...charFeats.map(f => f.el),
-    ...allFeats.map(f => f.el)
+    ...charFeats.filter(f => !f.deleted).map(f => f.el),
+    ...allFeats.filter(f => !f.deleted).map(f => f.el)
   ];
   const profIds = new Set();
   profSources.forEach(el => directProfs(el).forEach(id => profIds.add(id)));
@@ -1404,9 +1417,9 @@ function parseFC5eXML(xml, equipOverrides) {
     // de la que gane — solo en esta rama, nunca si el personaje termina
     // usando una armadura física (confirmado con el rasgo de prueba
     // "Habilita unarmored defense (dexterity)" del personaje de nivel 1).
-    computedAC = Math.max(10 + dexMod, ...parseUnarmoredACFormulas(allFeats, mods)) + unarmoredACBonusFlat;
+    computedAC = Math.max(10 + dexMod, ...parseUnarmoredACFormulas(allFeats.filter(f => !f.deleted), mods)) + unarmoredACBonusFlat;
   }
-  computedAC += shieldAC + flatItemACBonus + flatFeatACBonus(allFeats, acModFeats) + bonuses.acBonus;
+  computedAC += shieldAC + flatItemACBonus + flatFeatACBonus(allFeats.filter(f => !f.deleted), acModFeats) + bonuses.acBonus;
 
   allItems.forEach(it => {
     // Bonos globales de conjuro (CD/ataque de conjuro) — solo si el ítem
@@ -1427,12 +1440,12 @@ function parseFC5eXML(xml, equipOverrides) {
       // cuenta usando el flag `equipped` de abajo.
       weapons.push({
         name: it.name, type: it.type, damage1H: it.damage1H, damage2H: it.damage2H,
-        weaponProperty: it.weaponProperty, mods: it.mods, equipped: it.equipped, itemId: it.id
+        weaponProperty: it.weaponProperty, mods: it.mods, equipped: it.equipped, itemId: it.id, deleted: it.deleted
       });
     } else if (it.showAsAbility && it.name && it.text) {
       // Mismo motivo: siempre se agrega, buildAbilities decide visibilidad
       // según `equipped` (alwaysActive:true para pociones — no se "equipan").
-      itemFeats.push({ name: it.name, text: it.text, source:'item', equipped: it.equipped, alwaysActive: it.isPotion, itemId: it.id });
+      itemFeats.push({ name: it.name, text: it.text, source:'item', equipped: it.equipped, alwaysActive: it.isPotion, itemId: it.id, deleted: it.deleted });
     }
   });
 
@@ -1475,7 +1488,8 @@ function parseFC5eXML(xml, equipOverrides) {
         ritual: $(s,'ritual') === '1',
         rolls: $$(s,'roll').map(r => r.textContent.trim()).filter(Boolean),
         abilityIdx,
-        pactSlotLevel: pactLevel
+        pactSlotLevel: pactLevel,
+        deleted: $(s,'pwaDeleted') === '1'
       });
     });
   });
@@ -1487,6 +1501,7 @@ function parseFC5eXML(xml, equipOverrides) {
   const poolSeen = new Set();
   [...allFeats, ...itemFeats, ...charFeats].forEach((e, i) => {
     if (e.equipped === false && !e.alwaysActive) return;
+    if (e.deleted) return;
     const key = e.name.toLowerCase();
     if (poolSeen.has(key)) return;
     const pool = detectResourcePool(e.name, e.text, classInfo, totalLevel, mods, prof);
@@ -1506,8 +1521,11 @@ function parseFC5eXML(xml, equipOverrides) {
   );
 
   // Inventario: metadatos serializables (sin `.el`, es un nodo DOM) para
-  // la sección de Inventario y el toggle de equipar/desequipar.
-  const items = allItems.map(({ el, ...pub }) => pub);
+  // la sección de Inventario y el toggle de equipar/desequipar. Los ítems
+  // borrados (§3.x) se excluyen acá recién — antes de este punto se
+  // necesitaban presentes en `allItems` para que `item{idx}`/`w{idx}`/
+  // `e{idx}` de TODOS los demás ítems no se corrieran de lugar.
+  const items = allItems.filter(it => !it.deleted).map(({ el, ...pub }) => pub);
 
   // ── Iniciativa ──────────────────────────────────────────────────
   // Base = modificador de Destreza + bono universal type=12 ("Initiative"
@@ -2233,6 +2251,7 @@ function buildAbilities(entries, level, mods, prof, weapons, spellEntries, spell
     // .filter() previo) para que `wi` —y por lo tanto el id `w{wi}`—
     // sea estable ante toggles de equipar/desequipar (ver §2.9).
     if (w.equipped === false) return;
+    if (w.deleted) return;
 
     const finesse  = (w.weaponProperty & FINESSE_BIT) !== 0;
     const isRanged = w.type === 6;
@@ -2304,6 +2323,7 @@ function buildAbilities(entries, level, mods, prof, weapons, spellEntries, spell
     // armas arriba: el chequeo va DENTRO del forEach para que `idx` —y el
     // id `e{idx}`— sea estable ante toggles de equipar/desequipar (§2.9).
     if (e.equipped === false && !e.alwaysActive) return;
+    if (e.deleted) return;
     if (SKIP_NAMES.test(e.name) || SKIP_NAMES_EXACT.test(e.name.trim())) return;
     if (e.text.length < 30) return;
 
@@ -2388,6 +2408,7 @@ function buildAbilities(entries, level, mods, prof, weapons, spellEntries, spell
   // ── Spells ─────────────────────────────────────────
   const RE_SAVE = /salvaci[oó]n de|tirada de salvaci[oó]n|saving throw/i;
   (spellEntries || []).forEach(sp => {
+    if (sp.deleted) return;
     const stype = detectSpellTime(sp.time);
 
     const key = sp.name.toLowerCase();
@@ -4068,8 +4089,10 @@ function breakdownRows(entries, suffix) {
     </div>`;
   }).join('');
 }
-function editorFootRow(cancelFn, saveFn) {
+function editorFootRow(cancelFn, saveFn, deleteFn) {
+  const delBtn = deleteFn ? `<button class="footer-btn danger icon-only" onclick="${deleteFn}" title="Eliminar">🗑</button>` : '';
   return `<div class="modal-foot-row">
+    ${delBtn}
     <button class="footer-btn" onclick="${cancelFn}">Cancelar</button>
     <button class="footer-btn primary" onclick="${saveFn}">Guardar</button>
   </div>`;
@@ -4419,9 +4442,21 @@ function openFeatEditor(ab) {
           <div class="editor-hint">Con menos de 30 caracteres no aparece como tarjeta (se descarta por no tener contenido mecánico).</div>
           ${modEditorBlock()}
         </div>
-        ${editorFootRow('closeEditor()', 'saveFeatEdit()')}
+        ${editorFootRow('closeEditor()', 'saveFeatEdit()', 'deleteFeatFromEditor()')}
       </div>
     </div>`;
+}
+async function deleteFeatFromEditor() {
+  const ref = _editingFeatRef;
+  const name = ref.name;
+  if (!confirm(`¿Eliminar "${name}"? Deja de contar para todo (bonos, tiradas, tarjeta) y no se puede deshacer desde la app.`)) return;
+  await applyXmlEdit(doc => {
+    const el = locateFeatEl(doc, ref.source, ref.name);
+    if (!el) return;
+    setChildText(doc, el, 'pwaDeleted', '1');
+  });
+  closeEditor();
+  toast(`${name} eliminado`);
 }
 async function saveFeatEdit() {
   const name = document.getElementById('editor-name').value.trim();
@@ -4604,9 +4639,21 @@ function openItemEditor(itemId) {
           <div id="item-extra-fields">${itemTypeExtraFieldsHtml(curType, vals)}</div>
           ${modEditorBlock()}
         </div>
-        ${editorFootRow('closeEditor()', `saveItemEdit('${itemId}')`)}
+        ${editorFootRow('closeEditor()', `saveItemEdit('${itemId}')`, `deleteItemFromEditor('${itemId}')`)}
       </div>
     </div>`;
+}
+async function deleteItemFromEditor(itemId) {
+  const it = (char.items || []).find(i => i.id === itemId);
+  const name = it ? it.name : 'este ítem';
+  if (!confirm(`¿Eliminar "${name}"? Deja de contar para todo (equipar, bonos, tarjeta) y no se puede deshacer desde la app.`)) return;
+  await applyXmlEdit(doc => {
+    const el = locateItemEl(doc, itemId);
+    if (!el) return;
+    setChildText(doc, el, 'pwaDeleted', '1');
+  });
+  closeEditor();
+  toast(`${name} eliminado`);
 }
 async function saveItemEdit(itemId) {
   const name = document.getElementById('editor-name').value.trim();
@@ -4696,9 +4743,22 @@ function openSpellEditor(ab) {
           <label class="editor-field-label" style="margin-top:8px">Descripción</label>
           <textarea id="editor-text" class="editor-input editor-textarea" style="text-align:left;font-size:.85rem;font-weight:400">${esc(getChildText(el,'text'))}</textarea>
         </div>
-        ${editorFootRow('closeEditor()', `saveSpellEdit('${ab.id}')`)}
+        ${editorFootRow('closeEditor()', `saveSpellEdit('${ab.id}')`, `deleteSpellFromEditor('${ab.id}')`)}
       </div>
     </div>`;
+}
+async function deleteSpellFromEditor(spellId) {
+  const doc = currentDoc();
+  const el = doc && locateSpellEl(doc, spellId);
+  const name = el ? getChildText(el, 'name') : 'este conjuro';
+  if (!confirm(`¿Eliminar "${name}"? Deja de contar para todo (tarjeta, ranuras) y no se puede deshacer desde la app.`)) return;
+  await applyXmlEdit(doc2 => {
+    const el2 = locateSpellEl(doc2, spellId);
+    if (!el2) return;
+    setChildText(doc2, el2, 'pwaDeleted', '1');
+  });
+  closeEditor();
+  toast(`${name} eliminado`);
 }
 async function saveSpellEdit(spellId) {
   const name = document.getElementById('editor-name').value.trim();
