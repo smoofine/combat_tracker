@@ -592,6 +592,62 @@ const WEAPON_TYPES = new Set([5, 6]); // 5 = melee weapon, 6 = ranged weapon
 const FINESSE_BIT  = 2;
 const ABILITY_KEYS = ['str','dex','con','int','wis','cha'];
 const ABILITY_ES   = ['FUE','DES','CON','INT','SAB','CAR'];
+
+// ── Competencias de habilidad/salvación ──────────────────────────────
+// FC5e codifica ambas como <proficiency>N</proficiency> (hijo directo de
+// <race>/<background>/<class>/dote): N=0-5 salvación (FUE..CAR), N=100-117
+// habilidad en orden alfabético del PHB. Listas a nivel de módulo porque
+// las usa tanto parseFC5eXML (cálculo) como el editor de dotes/rasgos
+// (checkboxes de Saving Throws/Skills — mismos ids, mismo orden que FC5e).
+const SKILL_LIST = [
+  { id:100, key:'acrobatics',     label:'Acrobacias',         ability:'dex' },
+  { id:101, key:'animalHandling', label:'Trato con Animales', ability:'wis' },
+  { id:102, key:'arcana',         label:'Arcanos',            ability:'int' },
+  { id:103, key:'athletics',      label:'Atletismo',          ability:'str' },
+  { id:104, key:'deception',      label:'Engaño',             ability:'cha' },
+  { id:105, key:'history',        label:'Historia',           ability:'int' },
+  { id:106, key:'insight',        label:'Perspicacia',        ability:'wis' },
+  { id:107, key:'intimidation',   label:'Intimidación',       ability:'cha' },
+  { id:108, key:'investigation',  label:'Investigación',      ability:'int' },
+  { id:109, key:'medicine',       label:'Medicina',           ability:'wis' },
+  { id:110, key:'nature',         label:'Naturaleza',         ability:'int' },
+  { id:111, key:'perception',     label:'Percepción',         ability:'wis' },
+  { id:112, key:'performance',    label:'Interpretación',     ability:'cha' },
+  { id:113, key:'persuasion',     label:'Persuasión',         ability:'cha' },
+  { id:114, key:'religion',       label:'Religión',           ability:'int' },
+  { id:115, key:'sleightOfHand',  label:'Juego de Manos',     ability:'dex' },
+  { id:116, key:'stealth',        label:'Sigilo',             ability:'dex' },
+  { id:117, key:'survival',       label:'Supervivencia',      ability:'wis' },
+];
+const SAVE_LIST = [
+  { id:0, key:'str', label:'Fuerza', ability:'str' },
+  { id:1, key:'dex', label:'Destreza', ability:'dex' },
+  { id:2, key:'con', label:'Constitución', ability:'con' },
+  { id:3, key:'int', label:'Inteligencia', ability:'int' },
+  { id:4, key:'wis', label:'Sabiduría', ability:'wis' },
+  { id:5, key:'cha', label:'Carisma', ability:'cha' },
+];
+// ── Special Traits (<special>N</special> en dotes/rasgos) ───────────
+// Lista y orden confirmados por el usuario contra el picker real de
+// FC5e (Prueba_Varios.xml) — N = posición 0-indexada de esta lista, sin
+// excepciones (mismo criterio que los <type> de <mod>, ver 1.4 en
+// CONTEXTO). Por ahora la PWA solo guarda/edita el dato — no dispara
+// todavía ningún efecto mecánico propio (ver Pendientes en CONTEXTO).
+const SPECIAL_TRAIT_LIST = [
+  'Estilo de Combate: Arquería', 'Estilo de Combate: Defensa',
+  'Estilo de Combate: Duelo', 'Estilo de Combate: Combate Con Dos Armas',
+  'Todólogo (Jack of All Trades)', 'Complexión Poderosa (Powerful Build)',
+  'Defensa Sin Armadura: Fuerza', 'Defensa Sin Armadura: Destreza',
+  'Defensa Sin Armadura: Constitución', 'Defensa Sin Armadura: Inteligencia',
+  'Defensa Sin Armadura: Sabiduría', 'Defensa Sin Armadura: Carisma',
+];
+// ── Escuelas de conjuro (<school>N</school>) ─────────────────────────
+// Orden confirmado contra Prueba_Varios.xml: school=4 con el picker de
+// FC5e cerrado en Enchantment → índice 4 de esta lista (0=Ninguna).
+const SPELL_SCHOOLS = [
+  'Ninguna', 'Abjuración', 'Conjuración', 'Adivinación', 'Encantamiento',
+  'Evocación', 'Ilusión', 'Nigromancia', 'Transmutación',
+];
 // ═══════════════════════════════════════════════════
 //  RESOURCE-POOL REGISTRY
 //  Cada reserva de recurso tiene su propia entrada para evitar que
@@ -1299,30 +1355,11 @@ function parseFC5eXML(xml, equipOverrides) {
   // ── Skill proficiencies ────────────────────────────────────────────
   // FC5e codifica las competencias de habilidad como <proficiency>N</proficiency>
   // (hijo directo de <race>/<background>/<class>/dote seleccionada), con
-  // N=100..117 en orden alfabético estándar del PHB. Mapeo verificado
+  // N=100..117 en orden alfabético estándar del PHB (SKILL_LIST, nivel de
+  // módulo — ver definición junto a ABILITY_KEYS). Mapeo verificado
   // cruzando 3 personajes de prueba contra sus competencias reales en FC5e.
   // <autolevel> queda excluido (mismo criterio que ability scores) para no
   // contar dotes/rasgos de niveles no alcanzados.
-  const SKILL_LIST = [
-    { id:100, key:'acrobatics',     label:'Acrobacias',         ability:'dex' },
-    { id:101, key:'animalHandling', label:'Trato con Animales', ability:'wis' },
-    { id:102, key:'arcana',         label:'Arcanos',            ability:'int' },
-    { id:103, key:'athletics',      label:'Atletismo',          ability:'str' },
-    { id:104, key:'deception',      label:'Engaño',             ability:'cha' },
-    { id:105, key:'history',        label:'Historia',           ability:'int' },
-    { id:106, key:'insight',        label:'Perspicacia',        ability:'wis' },
-    { id:107, key:'intimidation',   label:'Intimidación',       ability:'cha' },
-    { id:108, key:'investigation',  label:'Investigación',      ability:'int' },
-    { id:109, key:'medicine',       label:'Medicina',           ability:'wis' },
-    { id:110, key:'nature',         label:'Naturaleza',         ability:'int' },
-    { id:111, key:'perception',     label:'Percepción',         ability:'wis' },
-    { id:112, key:'performance',    label:'Interpretación',     ability:'cha' },
-    { id:113, key:'persuasion',     label:'Persuasión',         ability:'cha' },
-    { id:114, key:'religion',       label:'Religión',           ability:'int' },
-    { id:115, key:'sleightOfHand',  label:'Juego de Manos',     ability:'dex' },
-    { id:116, key:'stealth',        label:'Sigilo',             ability:'dex' },
-    { id:117, key:'survival',       label:'Supervivencia',      ability:'wis' },
-  ];
   const directProfs = el => el
     ? [...el.children].filter(c => c.tagName.toLowerCase() === 'proficiency').map(c => parseInt(c.textContent))
     : [];
@@ -1347,15 +1384,8 @@ function parseFC5eXML(xml, equipOverrides) {
 
   // ── Saving throw proficiencies ───────────────────────────────────
   // FC5e codifica las competencias de salvación como <proficiency>N</proficiency>
-  // con N=0..5 en orden estándar D&D 5e: 0=FUE, 1=DES, 2=CON, 3=INT, 4=SAB, 5=CAR
-  const SAVE_LIST = [
-    { id:0, key:'str', label:'Fuerza', ability:'str' },
-    { id:1, key:'dex', label:'Destreza', ability:'dex' },
-    { id:2, key:'con', label:'Constitución', ability:'con' },
-    { id:3, key:'int', label:'Inteligencia', ability:'int' },
-    { id:4, key:'wis', label:'Sabiduría', ability:'wis' },
-    { id:5, key:'cha', label:'Carisma', ability:'cha' },
-  ];
+  // con N=0..5 en orden estándar D&D 5e (SAVE_LIST, nivel de módulo —
+  // ver definición junto a ABILITY_KEYS): 0=FUE, 1=DES, 2=CON, 3=INT, 4=SAB, 5=CAR
   const saveProfIds = new Set();
   profSources.forEach(el => directProfs(el).forEach(id => {
     if (id >= 0 && id <= 5) saveProfIds.add(id);
@@ -1527,6 +1557,35 @@ function parseFC5eXML(xml, equipOverrides) {
   // `e{idx}` de TODOS los demás ítems no se corrieran de lugar.
   const items = allItems.filter(it => !it.deleted).map(({ el, ...pub }) => pub);
 
+  // ── Notas (<note>, hijas directas de <character>) ────────────────────
+  // No aportan nada al cálculo — es texto libre del jugador (recordatorios,
+  // contactos, pistas, etc.). La imagen (si tiene) NO va inline dentro de
+  // <note>: <note><imageData><uid>N</uid></imageData></note> solo referencia
+  // por uid a un <imageData><uid>N</uid><encoded>BASE64</encoded></imageData>
+  // que vive como hermano de <character>, bajo <pc> (pool de assets propio
+  // de FC5e — confirmado en Prueba_Varios.xml). El campo "Archive" del
+  // editor de FC5e no se pudo confirmar en el tag XML porque el ejemplo
+  // disponible no lo tenía tildado — ver Pendientes en CONTEXTO.
+  const pcRoot = ch.parentNode;
+  const imagePool = new Map();
+  if (pcRoot) [...pcRoot.children].filter(c => c.tagName.toLowerCase() === 'imagedata').forEach(img => {
+    const uid = getChildText(img, 'uid');
+    const enc = getChildText(img, 'encoded');
+    if (uid && enc) imagePool.set(uid, enc);
+  });
+  const notes = [...ch.children].filter(c => c.tagName.toLowerCase() === 'note').map((n, i) => {
+    const imgDataEl = [...n.children].find(c => c.tagName.toLowerCase() === 'imagedata');
+    const uid = imgDataEl ? getChildText(imgDataEl, 'uid') : '';
+    return {
+      id: `note${i}`,
+      name: getChildText(n, 'name') || 'Sin título',
+      text: getChildText(n, 'text'),
+      imageUid: uid || null,
+      imageData: uid && imagePool.has(uid) ? imagePool.get(uid) : null,
+      deleted: getChildText(n, 'pwaDeleted') === '1',
+    };
+  }).filter(n => !n.deleted).map(({ deleted, ...pub }) => pub);
+
   // ── Iniciativa ──────────────────────────────────────────────────
   // Base = modificador de Destreza + bono universal type=12 ("Initiative"
   // en el menú de FC5e — confirmado con el ítem de prueba dedicado).
@@ -1540,7 +1599,7 @@ function parseFC5eXML(xml, equipOverrides) {
   const perceptionSkill = skills.find(s => s.key === 'perception');
   const passiveWisdom = 10 + (perceptionSkill ? perceptionSkill.mod : mods.wis) + passiveWisdomBonusFlat;
 
-  return { name, hpMax, hpMaxBase, hpBreakdown:hpModsFound, hpCur, cName, cLvl:totalLevel, classInfo, raceName, prof, mods, scores, scoreBreakdown, skills, saves, trackers, abilities, spellDC, maxSpellLevel, ac:computedAC, speed, initiative, passiveWisdom, bonuses, items };
+  return { name, hpMax, hpMaxBase, hpBreakdown:hpModsFound, hpCur, cName, cLvl:totalLevel, classInfo, raceName, prof, mods, scores, scoreBreakdown, skills, saves, trackers, abilities, spellDC, maxSpellLevel, ac:computedAC, speed, initiative, passiveWisdom, bonuses, items, notes };
 }
 
 // ── Classify a single ability text ──────────────────
@@ -2903,6 +2962,9 @@ function render() {
   // ── Inventario: equipar/desequipar ítems ──────────
   h += renderInventorySection();
 
+  // ── Notas libres del jugador ───────────────────────
+  h += renderNotesSection();
+
   // ── Rasgos pasivos / siempre activos ──────────────
   h += renderPassiveSection();
 
@@ -3541,6 +3603,39 @@ function renderInventorySection() {
   return h + `</div>`;
 }
 
+function renderNotesSection() {
+  // Mismo criterio que Inventario: personajes cargados antes de esta
+  // versión no tienen char.notes cacheado hasta reimportar.
+  if (!char.notes) return '';
+  const collapsed = !!G.collapsed.notes;
+  let h = `<div class="section"><div class="sec-head sec-toggle ${collapsed?'collapsed':''}" onclick="toggleSection('notes')">
+    <div class="sec-dot d-utility"></div>
+    <span class="sec-name">🗒️ Notas${char.notes.length ? ` (${char.notes.length})` : ''}</span>
+    <span class="chev" style="margin-left:auto">▾</span>
+  </div>`;
+  if (collapsed) return h + `</div>`;
+
+  if (!char.notes.length) {
+    h += `<div class="ab static"><div class="ab-main"><div class="ab-desc">Sin notas todavía.</div></div></div>`;
+  }
+  char.notes.forEach(n => {
+    const desc = n.text ? shortDesc(n.text) : '';
+    const full = n.text ? fullDescClean(n.text) : '';
+    if (desc) { SHORT_DESC[n.id] = desc; if (full !== desc) FULL_DESC[n.id] = full; }
+    h += `<div class="ab static src-item editable-lp"
+      onpointerdown="lpStart(event,'note','${n.id}')" onpointermove="lpMove(event)"
+      onpointerup="lpEnd(event)" onpointercancel="lpCancel(event)">
+      <div class="ab-main">
+        <div class="ab-name">${n.imageData ? '🖼️ ' : ''}${esc(n.name)}</div>
+        ${desc ? `<div class="ab-desc" id="desc-${n.id}">${esc(desc)}</div>` : ''}
+        ${full !== desc && desc ? `<span class="ab-more" id="more-${n.id}" onclick="toggleDesc('${n.id}')">ver más ▾</span>` : ''}
+      </div>
+    </div>`;
+  });
+  h += `<button class="footer-btn" onclick="openEditor('note',null)">+ Agregar nota</button>`;
+  return h + `</div>`;
+}
+
 function renderPassiveSection() {
   const all = (char.abilities.passive || []).filter(a => !G.hidden.abilities[a.id]);
   if (!all.length) return '';
@@ -4076,6 +4171,7 @@ function openEditor(kind, id) {
   else if (kind === 'feat') { const ab = id ? ABILITY_INDEX[id] : null; ab ? openFeatEditor(ab) : openNewFeatEditor(); }
   else if (kind === 'item') { id ? openItemEditor(id) : openNewItemEditor(); }
   else if (kind === 'spell') { const ab = id ? ABILITY_INDEX[id] : null; ab ? openSpellEditor(ab) : openNewSpellEditor(); }
+  else if (kind === 'note') { id ? openNoteEditor(id) : openNewNoteEditor(); }
 }
 
 const ABILITY_NAME_ES = { str:'Fuerza', dex:'Destreza', con:'Constitución', int:'Inteligencia', wis:'Sabiduría', cha:'Carisma' };
@@ -4216,6 +4312,49 @@ function setChildText(doc, el, tag, value) {
   if (!c) { c = doc.createElement(tag); el.appendChild(c); }
   c.textContent = value;
 }
+// Lee/escribe TODOS los hijos directos <tag> de un elemento como lista —
+// mismo patrón que getMods/setMods, reutilizado para <proficiency> (ids
+// numéricos), <special> (ids numéricos) y <roll> (texto libre). Reescribe
+// la lista completa de una, en el orden dado.
+function getMultiChildInts(el, tag) {
+  if (!el) return [];
+  return [...el.children].filter(c => c.tagName.toLowerCase() === tag.toLowerCase())
+    .map(c => parseInt(c.textContent)).filter(n => Number.isFinite(n));
+}
+function setMultiChildInts(doc, el, tag, values) {
+  [...el.children].filter(c => c.tagName.toLowerCase() === tag.toLowerCase()).forEach(c => el.removeChild(c));
+  values.forEach(v => {
+    const c = doc.createElement(tag);
+    c.textContent = String(v);
+    el.appendChild(c);
+  });
+}
+function getMultiChildTexts(el, tag) {
+  if (!el) return [];
+  return [...el.children].filter(c => c.tagName.toLowerCase() === tag.toLowerCase())
+    .map(c => c.textContent.trim()).filter(Boolean);
+}
+function setMultiChildTexts(doc, el, tag, values) {
+  [...el.children].filter(c => c.tagName.toLowerCase() === tag.toLowerCase()).forEach(c => el.removeChild(c));
+  values.forEach(v => {
+    const c = doc.createElement(tag);
+    c.textContent = v;
+    el.appendChild(c);
+  });
+}
+// Booleano al estilo FC5e: la sola PRESENCIA del tag (valor "1") es
+// verdadero; ausente = falso. Nunca escribe "0" — se borra el tag entero,
+// igual que en los XML reales de FC5e (confirmado en Prueba_Varios.xml:
+// Somatic sin marcar directamente no tiene tag, no trae un "0").
+function setChildBool(doc, el, tag, checked) {
+  const existing = [...el.children].find(c => c.tagName.toLowerCase() === tag.toLowerCase());
+  if (checked) {
+    if (existing) existing.textContent = '1';
+    else setChildText(doc, el, tag, '1');
+  } else if (existing) {
+    el.removeChild(existing);
+  }
+}
 function getMods(el) {
   if (!el) return [];
   return [...el.children].filter(c => c.tagName.toLowerCase() === 'mod').map(md => ({
@@ -4254,12 +4393,7 @@ function createSpellEl(doc, classIdx, fields) {
   const c = ch && ch.querySelectorAll('class')[classIdx];
   if (!c) return null;
   const sp = doc.createElement('spell');
-  setChildText(doc, sp, 'name', fields.name);
-  setChildText(doc, sp, 'text', fields.text);
-  setChildText(doc, sp, 'level', String(fields.level ?? 0));
-  if (fields.time) setChildText(doc, sp, 'time', fields.time);
-  if (fields.range) setChildText(doc, sp, 'range', fields.range);
-  if (fields.duration) setChildText(doc, sp, 'duration', fields.duration);
+  applySpellFields(doc, sp, { rolls: [], school: null, ritual: false, verbal: false, somatic: false, material: false, materials: '', ...fields });
   c.appendChild(sp);
   return sp;
 }
@@ -4418,6 +4552,48 @@ function applyTextAndMods(doc, el, rawText, modEditList) {
   setMods(doc, el, realMods);
 }
 
+// ── Special Traits / Saving Throws / Skills (dotes y rasgos) ─────────
+// Los tres bloques que FC5e muestra debajo de la descripción de
+// cualquier <feat> (raza/clase/trasfondo/dote), en ese orden — ver
+// Prueba_Varios.xml. Mismo widget visual que las propiedades de arma
+// (.editor-weapon-props/.editor-checkbox).
+function traitCheckboxesHtml(cls, list, selected, labelFn) {
+  return list.map(item => {
+    const id = item.id ?? item;
+    const lbl = labelFn ? labelFn(item) : item;
+    return `<label class="editor-checkbox"><input type="checkbox" class="${cls}" value="${id}" ${selected.has(id)?'checked':''}> ${esc(lbl)}</label>`;
+  }).join('');
+}
+function traitProfsBlock(specialIds, profIds) {
+  const specialSet = new Set(specialIds);
+  const saveSet = new Set(profIds.filter(n => n >= 0 && n <= 5));
+  const skillSet = new Set(profIds.filter(n => n >= 100 && n <= 117));
+  return `
+    <div class="editor-subhead">Special Traits</div>
+    <div class="editor-weapon-props">${traitCheckboxesHtml('editor-special-bit', SPECIAL_TRAIT_LIST.map((lbl,i)=>({id:i,lbl})), specialSet, x=>x.lbl)}</div>
+    <div class="editor-subhead">Competencia — Tiradas de salvación</div>
+    <div class="editor-weapon-props">${traitCheckboxesHtml('editor-save-bit', SAVE_LIST, saveSet, s=>s.label)}</div>
+    <div class="editor-subhead">Competencia — Habilidades</div>
+    <div class="editor-weapon-props">${traitCheckboxesHtml('editor-skill-bit', SKILL_LIST, skillSet, s=>s.label)}</div>`;
+}
+function readTraitProfsSelections() {
+  const special = [...document.querySelectorAll('.editor-special-bit:checked')].map(c => parseInt(c.value));
+  const saves = [...document.querySelectorAll('.editor-save-bit:checked')].map(c => parseInt(c.value));
+  const skills = [...document.querySelectorAll('.editor-skill-bit:checked')].map(c => parseInt(c.value));
+  return { special, proficiency: [...saves, ...skills] };
+}
+function applyTraitProfs(doc, el, sel) {
+  setMultiChildInts(doc, el, 'special', sel.special);
+  setMultiChildInts(doc, el, 'proficiency', sel.proficiency);
+}
+// El campo Prerequisite solo existe en Dotes (feat a nivel de personaje,
+// source==='feat'/parentKind==='character') — raza/clase/trasfondo no lo
+// tienen (ver Prueba_Varios.xml).
+function prereqFieldHtml(value) {
+  return `<label class="editor-field-label" style="margin-top:8px">Prerrequisito</label>
+    <input type="text" id="editor-prereq" class="editor-input" style="text-align:left;font-size:.85rem" value="${esc(value||'')}" placeholder="Opcional — otra dote, raza, puntuación mínima…">`;
+}
+
 // ── Dotes / rasgos (<feat>) ────────────────────────────────────────────
 let _editingFeatRef = null; // {source, name} del elemento ORIGINAL — se relocaliza por nombre al guardar
 function openFeatEditor(ab) {
@@ -4425,21 +4601,24 @@ function openFeatEditor(ab) {
   const el = doc && locateFeatEl(doc, ab.source, ab.name);
   const name = el ? getChildText(el, 'name') : ab.name;
   const text = stripTextMarkers(el ? getChildText(el, 'text') : (ab.full || ab.desc || ''));
+  const isDote = ab.source === 'feat';
   _modEdit = getModEditEntries(el);
   _editingFeatRef = { source: ab.source, name: ab.name };
   document.getElementById('editor-modal').innerHTML = `
     <div class="modal-overlay" onclick="if(event.target===this)closeEditor()">
       <div class="modal-sheet">
         <div class="modal-head">
-          <span class="modal-title">📜 Dote / rasgo</span>
+          <span class="modal-title">📜 ${isDote ? 'Dote' : 'Rasgo'}</span>
           <button class="modal-close" onclick="closeEditor()">✕</button>
         </div>
         <div class="modal-body">
           <label class="editor-field-label">Nombre</label>
           <input type="text" id="editor-name" class="editor-input" style="text-align:left;font-size:.95rem" value="${esc(name)}">
+          ${isDote ? prereqFieldHtml(el ? getChildText(el, 'prereq') : '') : ''}
           <label class="editor-field-label" style="margin-top:8px">Descripción</label>
           <textarea id="editor-text" class="editor-input editor-textarea" style="text-align:left;font-size:.85rem;font-weight:400">${esc(text)}</textarea>
           <div class="editor-hint">Con menos de 30 caracteres no aparece como tarjeta (se descarta por no tener contenido mecánico).</div>
+          ${traitProfsBlock(getMultiChildInts(el, 'special'), getMultiChildInts(el, 'proficiency'))}
           ${modEditorBlock()}
         </div>
         ${editorFootRow('closeEditor()', 'saveFeatEdit()', 'deleteFeatFromEditor()')}
@@ -4464,12 +4643,17 @@ async function saveFeatEdit() {
   if (!name) { toast('Ponele un nombre'); return; }
   if (text.trim().length < 30) { toast('El texto necesita al menos 30 caracteres para verse como tarjeta'); return; }
   const ref = _editingFeatRef;
+  const isDote = ref.source === 'feat';
+  const prereq = isDote ? document.getElementById('editor-prereq').value.trim() : '';
   const modsSnapshot = _modEdit;
+  const traitProfs = readTraitProfsSelections();
   await applyXmlEdit(doc => {
     const el = locateFeatEl(doc, ref.source, ref.name);
     if (!el) return;
     setChildText(doc, el, 'name', name);
     applyTextAndMods(doc, el, text, modsSnapshot);
+    applyTraitProfs(doc, el, traitProfs);
+    if (isDote) setChildText(doc, el, 'prereq', prereq);
   });
   closeEditor();
   toast(`${name} guardado`);
@@ -4483,6 +4667,10 @@ function featParentTargetEl(doc, parentKind) {
     return [...ch.querySelectorAll('class')][idx] || ch;
   }
   return ch;
+}
+function onFeatParentChange() {
+  const isDote = document.getElementById('editor-parent').value === 'character';
+  document.getElementById('feat-prereq-wrap').style.display = isDote ? '' : 'none';
 }
 function openNewFeatEditor() {
   _modEdit = [];
@@ -4502,15 +4690,17 @@ function openNewFeatEditor() {
         </div>
         <div class="modal-body">
           <label class="editor-field-label">Dónde va</label>
-          <select id="editor-parent" class="editor-input" style="text-align:left;font-weight:400">
+          <select id="editor-parent" class="editor-input" style="text-align:left;font-weight:400" onchange="onFeatParentChange()">
             ${parentOpts.map(([v,l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join('')}
           </select>
           <div class="editor-hint">Define de qué origen cuelga en el XML — se ve reflejado en el color/etiqueta de la tarjeta.</div>
           <label class="editor-field-label" style="margin-top:8px">Nombre</label>
           <input type="text" id="editor-name" class="editor-input" style="text-align:left;font-size:.95rem" placeholder="Nombre de la dote/rasgo">
+          <div id="feat-prereq-wrap">${prereqFieldHtml('')}</div>
           <label class="editor-field-label" style="margin-top:8px">Descripción</label>
           <textarea id="editor-text" class="editor-input editor-textarea" style="text-align:left;font-size:.85rem;font-weight:400" placeholder="Texto de la habilidad — de acá se detecta automáticamente si es Acción/Adicional/Reacción/pasiva, igual que con el resto"></textarea>
           <div class="editor-hint">Necesita al menos 30 caracteres para aparecer como tarjeta.</div>
+          ${traitProfsBlock([], [])}
           ${modEditorBlock()}
         </div>
         ${editorFootRow('closeEditor()', 'saveNewFeatEdit()')}
@@ -4521,13 +4711,18 @@ async function saveNewFeatEdit() {
   const name = document.getElementById('editor-name').value.trim();
   const text = document.getElementById('editor-text').value.trim();
   const parentKind = document.getElementById('editor-parent').value;
+  const isDote = parentKind === 'character';
+  const prereq = isDote ? document.getElementById('editor-prereq').value.trim() : '';
   if (!name || !text) { toast('Completá nombre y descripción'); return; }
   if (text.length < 30) { toast('El texto necesita al menos 30 caracteres para verse como tarjeta'); return; }
   const modsSnapshot = _modEdit;
+  const traitProfs = readTraitProfsSelections();
   await applyXmlEdit(doc => {
     const parent = featParentTargetEl(doc, parentKind);
     const f = createFeatEl(doc, name, '');
     applyTextAndMods(doc, f, text, modsSnapshot);
+    applyTraitProfs(doc, f, traitProfs);
+    if (isDote && prereq) setChildText(doc, f, 'prereq', prereq);
     parent.appendChild(f); // dote a nivel de personaje — mismo lugar que charFeats (ver 2.x) — u otro origen elegido arriba
   });
   closeEditor();
@@ -4719,10 +4914,90 @@ async function saveNewItemEdit() {
 }
 
 // ── Conjuros ────────────────────────────────────────────────────────
+// ── Conjuros ────────────────────────────────────────────────────────
+// School/Ritual/Componentes/Materials/Dice Rolls — mismos campos que
+// muestra el editor de conjuro de FC5e, en su mismo orden (ver
+// Prueba_Varios.xml). `<v>`/`<s>`/`<m>` son booleanos "por presencia"
+// (ver setChildBool); `<materials>` solo existe si Material está tildado.
+function spellSchoolOptionsHtml(selected) {
+  return SPELL_SCHOOLS.map((lbl, i) => `<option value="${i}" ${i===selected?'selected':''}>${esc(lbl)}</option>`).join('');
+}
+function spellComponentsBlock(v, s, m, materials) {
+  return `
+    <div class="editor-subhead">Componentes</div>
+    <div class="editor-weapon-props">
+      <label class="editor-checkbox"><input type="checkbox" id="editor-comp-v" ${v?'checked':''}> Verbal</label>
+      <label class="editor-checkbox"><input type="checkbox" id="editor-comp-s" ${s?'checked':''}> Somático</label>
+      <label class="editor-checkbox"><input type="checkbox" id="editor-comp-m" ${m?'checked':''} onchange="onSpellMaterialToggle()"> Material</label>
+    </div>
+    <div id="spell-materials-wrap" style="${m?'':'display:none'}">
+      <label class="editor-field-label">Componente material</label>
+      <input type="text" id="editor-materials" class="editor-input" style="text-align:left;font-size:.85rem" value="${esc(materials||'')}" placeholder="Qué materiales requiere">
+    </div>`;
+}
+function onSpellMaterialToggle() {
+  const checked = document.getElementById('editor-comp-m').checked;
+  document.getElementById('spell-materials-wrap').style.display = checked ? '' : 'none';
+}
+// Lista editable de <roll> — fórmulas de dados con placeholders %N de
+// FC5e. Confirmado empíricamente: %0 = modificador de aptitud mágica
+// (ver estimateDamage). El resto (característica/competencia en tiradas
+// de conjuro) es una hipótesis sin validar todavía — ver Pendientes en
+// CONTEXTO_PROYECTO.md — por eso el campo es texto libre: se guarda tal
+// cual lo escriba el usuario, sin intentar interpretarlo.
+let _rollEdit = [];
+function rollEditRowsHtml() {
+  if (!_rollEdit.length) return '<div class="editor-hint">Sin tiradas propias. "+ Agregar tirada" para sumar una.</div>';
+  return _rollEdit.map((r, i) => `
+    <div class="mod-row">
+      <input type="text" class="editor-input" style="text-align:left;font-size:.8rem;flex:1" value="${esc(r)}" onchange="rollRowSet(${i},this.value)" placeholder="1d8+%0">
+      <button class="mod-tiny-btn danger" onclick="rollRowRemove(${i})" title="Quitar">✕</button>
+    </div>`).join('');
+}
+function refreshRollEditor() {
+  const el = document.getElementById('roll-editor-rows');
+  if (el) el.innerHTML = rollEditRowsHtml();
+}
+function rollRowSet(i, value) { _rollEdit[i] = value; }
+function rollRowRemove(i) { _rollEdit.splice(i, 1); refreshRollEditor(); }
+function rollRowAdd() { _rollEdit.push(''); refreshRollEditor(); }
+function rollEditorBlock() {
+  return `<div class="editor-subhead">Dice Rolls</div>
+    <div id="roll-editor-rows">${rollEditRowsHtml()}</div>
+    <button class="footer-btn" style="margin-top:6px" onclick="rollRowAdd()">+ Agregar tirada</button>
+    <div class="editor-hint">Fórmula tal cual la usa FC5e (ej. "1d8+%0"). Confirmado: <b>%0</b> = modificador de aptitud mágica. Otros códigos (característica/competencia) todavía sin validar — se guardan tal cual los escribas.</div>`;
+}
+function readSpellComponents() {
+  return {
+    verbal: document.getElementById('editor-comp-v').checked,
+    somatic: document.getElementById('editor-comp-s').checked,
+    material: document.getElementById('editor-comp-m').checked,
+    materials: document.getElementById('editor-materials') ? document.getElementById('editor-materials').value.trim() : '',
+  };
+}
+function applySpellFields(doc, el, f) {
+  setChildText(doc, el, 'name', f.name);
+  if (f.school !== null && f.school !== undefined) setChildText(doc, el, 'school', String(f.school));
+  setChildBool(doc, el, 'ritual', f.ritual);
+  setChildText(doc, el, 'time', f.time);
+  setChildText(doc, el, 'range', f.range);
+  setChildBool(doc, el, 'v', f.verbal);
+  setChildBool(doc, el, 's', f.somatic);
+  setChildBool(doc, el, 'm', f.material);
+  if (f.material && f.materials) setChildText(doc, el, 'materials', f.materials);
+  else { const old = [...el.children].find(c => c.tagName.toLowerCase()==='materials'); if (old) el.removeChild(old); }
+  setChildText(doc, el, 'duration', f.duration);
+  setChildText(doc, el, 'text', f.text);
+  setChildText(doc, el, 'level', String(f.level ?? 0));
+  setMultiChildTexts(doc, el, 'roll', f.rolls.filter(Boolean));
+}
+
 function openSpellEditor(ab) {
   const doc = currentDoc();
   const el = doc && locateSpellEl(doc, ab.id);
   if (!el) { toast('No se encontró el conjuro'); return; }
+  _rollEdit = getMultiChildTexts(el, 'roll');
+  const school = getChildText(el, 'school');
   document.getElementById('editor-modal').innerHTML = `
     <div class="modal-overlay" onclick="if(event.target===this)closeEditor()">
       <div class="modal-sheet">
@@ -4740,8 +5015,16 @@ function openSpellEditor(ab) {
           </div>
           <label class="editor-field-label" style="margin-top:8px">Tiempo de lanzamiento</label>
           <input type="text" id="editor-time" class="editor-input" style="text-align:left;font-size:.85rem" value="${esc(getChildText(el,'time'))}" placeholder="1 acción / 1 bonus action / ...">
+          <div class="editor-row3" style="grid-template-columns:2fr 1fr">
+            <div><label class="editor-field-label">Escuela</label>
+              <select id="editor-school" class="editor-input" style="text-align:left;font-weight:400">${spellSchoolOptionsHtml(school===''?0:parseInt(school))}</select>
+            </div>
+            <div class="editor-checkbox-field"><label class="editor-checkbox"><input type="checkbox" id="editor-ritual" ${getChildText(el,'ritual')==='1'?'checked':''}> Ritual</label></div>
+          </div>
+          ${spellComponentsBlock(getChildText(el,'v')==='1', getChildText(el,'s')==='1', getChildText(el,'m')==='1', getChildText(el,'materials'))}
           <label class="editor-field-label" style="margin-top:8px">Descripción</label>
           <textarea id="editor-text" class="editor-input editor-textarea" style="text-align:left;font-size:.85rem;font-weight:400">${esc(getChildText(el,'text'))}</textarea>
+          ${rollEditorBlock()}
         </div>
         ${editorFootRow('closeEditor()', `saveSpellEdit('${ab.id}')`, `deleteSpellFromEditor('${ab.id}')`)}
       </div>
@@ -4762,21 +5045,20 @@ async function deleteSpellFromEditor(spellId) {
 }
 async function saveSpellEdit(spellId) {
   const name = document.getElementById('editor-name').value.trim();
-  const level = document.getElementById('editor-level').value;
+  const level = parseInt(document.getElementById('editor-level').value) || 0;
   const range = document.getElementById('editor-range').value.trim();
   const duration = document.getElementById('editor-duration').value.trim();
   const time = document.getElementById('editor-time').value.trim();
   const text = document.getElementById('editor-text').value;
+  const school = parseInt(document.getElementById('editor-school').value);
+  const ritual = document.getElementById('editor-ritual').checked;
+  const comps = readSpellComponents();
+  const rolls = _rollEdit.slice();
   if (!name) { toast('Ponele un nombre'); return; }
   await applyXmlEdit(doc => {
     const el = locateSpellEl(doc, spellId);
     if (!el) return;
-    setChildText(doc, el, 'name', name);
-    setChildText(doc, el, 'level', String(parseInt(level)||0));
-    setChildText(doc, el, 'range', range);
-    setChildText(doc, el, 'duration', duration);
-    setChildText(doc, el, 'time', time);
-    setChildText(doc, el, 'text', text);
+    applySpellFields(doc, el, { name, level, range, duration, time, text, school, ritual, ...comps, rolls });
   });
   closeEditor();
   toast(`${name} guardado`);
@@ -4784,6 +5066,7 @@ async function saveSpellEdit(spellId) {
 function openNewSpellEditor() {
   const classes = char.classInfo || [];
   if (!classes.length) { toast('El personaje no tiene clases lanzadoras cargadas'); return; }
+  _rollEdit = [];
   const classPicker = classes.length > 1
     ? `<label class="editor-field-label">Clase</label>
        <select id="editor-classidx" class="editor-input" style="text-align:left;font-weight:400">
@@ -4808,8 +5091,16 @@ function openNewSpellEditor() {
           </div>
           <label class="editor-field-label" style="margin-top:8px">Tiempo de lanzamiento</label>
           <input type="text" id="editor-time" class="editor-input" style="text-align:left;font-size:.85rem" placeholder="1 acción">
+          <div class="editor-row3" style="grid-template-columns:2fr 1fr">
+            <div><label class="editor-field-label">Escuela</label>
+              <select id="editor-school" class="editor-input" style="text-align:left;font-weight:400">${spellSchoolOptionsHtml(0)}</select>
+            </div>
+            <div class="editor-checkbox-field"><label class="editor-checkbox"><input type="checkbox" id="editor-ritual"> Ritual</label></div>
+          </div>
+          ${spellComponentsBlock(false, false, false, '')}
           <label class="editor-field-label" style="margin-top:8px">Descripción</label>
           <textarea id="editor-text" class="editor-input editor-textarea" style="text-align:left;font-size:.85rem;font-weight:400"></textarea>
+          ${rollEditorBlock()}
         </div>
         ${editorFootRow('closeEditor()', 'saveNewSpellEdit()')}
       </div>
@@ -4818,17 +5109,190 @@ function openNewSpellEditor() {
 async function saveNewSpellEdit() {
   const classIdx = parseInt(document.getElementById('editor-classidx').value) || 0;
   const name = document.getElementById('editor-name').value.trim();
-  const level = document.getElementById('editor-level').value;
+  const level = parseInt(document.getElementById('editor-level').value) || 0;
   const range = document.getElementById('editor-range').value.trim();
   const duration = document.getElementById('editor-duration').value.trim();
   const time = document.getElementById('editor-time').value.trim();
   const text = document.getElementById('editor-text').value.trim();
+  const school = parseInt(document.getElementById('editor-school').value);
+  const ritual = document.getElementById('editor-ritual').checked;
+  const comps = readSpellComponents();
+  const rolls = _rollEdit.slice();
   if (!name || !text) { toast('Completá nombre y descripción'); return; }
   await applyXmlEdit(doc => {
-    createSpellEl(doc, classIdx, { name, text, level: parseInt(level)||0, range, duration, time });
+    createSpellEl(doc, classIdx, { name, text, level, range, duration, time, school, ritual, ...comps, rolls });
   });
   closeEditor();
   toast(`${name} agregado`);
+}
+
+// ── Notas (<note>) ──────────────────────────────────────────────────
+// Título + Body + imagen opcional, mismos campos que el editor de notas
+// de FC5e (ver Prueba_Varios.xml). El campo "Archive" NO está implementado
+// todavía: el ejemplo disponible no tenía la casilla tildada, así que no
+// se pudo confirmar el nombre del tag — ver Pendientes en CONTEXTO.
+function locateNoteEl(doc, noteId) {
+  const m = /^note(\d+)$/.exec(noteId || '');
+  const ch = doc && doc.querySelector('character');
+  if (!m || !ch) return null;
+  const direct = [...ch.children].filter(x => x.tagName.toLowerCase() === 'note');
+  return direct[+m[1]] || null;
+}
+function createNoteEl(doc, name, text) {
+  const ch = doc.querySelector('character');
+  const n = doc.createElement('note');
+  setChildText(doc, n, 'name', name);
+  setChildText(doc, n, 'text', text);
+  ch.appendChild(n);
+  return n;
+}
+// Sube/reemplaza/quita la imagen de una nota. La imagen NO va inline en
+// <note> — FC5e la guarda en un pool de <imageData> hermano de <character>
+// (bajo <pc>), referenciado por <uid>. Subir una imagen nueva agrega una
+// entrada al pool con un uid libre; la entrada vieja (si había) queda
+// huérfana en el pool — inofensivo, FC5e la ignora si nada la referencia.
+function nextImageUid(doc) {
+  const ch = doc.querySelector('character');
+  const pc = ch && ch.parentNode;
+  let max = 1999; // FC5e arranca sus propios uids bajos (~1000-2000); nos vamos lejos para no pisarlos
+  if (pc) [...pc.children].filter(c => c.tagName.toLowerCase() === 'imagedata').forEach(img => {
+    const uid = parseInt(getChildText(img, 'uid'));
+    if (Number.isFinite(uid) && uid > max) max = uid;
+  });
+  return String(max + 1);
+}
+function setNoteImage(doc, noteEl, base64) {
+  const ch = doc.querySelector('character');
+  const pc = ch && ch.parentNode;
+  const oldRef = [...noteEl.children].find(c => c.tagName.toLowerCase() === 'imagedata');
+  if (oldRef) noteEl.removeChild(oldRef);
+  if (!base64 || !pc) return;
+  const uid = nextImageUid(doc);
+  const asset = doc.createElement('imageData');
+  setChildText(doc, asset, 'uid', uid);
+  setChildText(doc, asset, 'encoded', base64);
+  pc.appendChild(asset);
+  const ref = doc.createElement('imageData');
+  setChildText(doc, ref, 'uid', uid);
+  noteEl.appendChild(ref);
+}
+// Estado del picker de imagen mientras el modal está abierto — se resetea
+// cada vez que se abre un editor de nota (noteImageBlock()).
+let _noteImageBase64 = null;
+let _noteImageChanged = false;
+function noteImageInnerHtml() {
+  return `
+    ${_noteImageBase64 ? `<img src="data:image/jpeg;base64,${_noteImageBase64}" style="max-width:100%;border-radius:8px;margin-bottom:6px">` : '<div class="editor-hint">Sin imagen.</div>'}
+    <input type="file" id="note-image-file" accept="image/*" style="display:none" onchange="onNoteImageSelected(event)">
+    <div style="display:flex;gap:6px">
+      <button class="footer-btn" type="button" onclick="document.getElementById('note-image-file').click()">${_noteImageBase64 ? 'Cambiar imagen' : '+ Agregar imagen'}</button>
+      ${_noteImageBase64 ? `<button class="footer-btn danger" type="button" onclick="removeNoteImage()">Quitar</button>` : ''}
+    </div>`;
+}
+function noteImageBlock(existingImageData) {
+  _noteImageBase64 = existingImageData || null;
+  _noteImageChanged = false;
+  return `<div class="editor-subhead">Imagen</div><div id="note-image-block">${noteImageInnerHtml()}</div>`;
+}
+function refreshNoteImageBlock() {
+  const el = document.getElementById('note-image-block');
+  if (el) el.innerHTML = noteImageInnerHtml();
+}
+function onNoteImageSelected(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    _noteImageBase64 = String(reader.result).split(',')[1] || null;
+    _noteImageChanged = true;
+    refreshNoteImageBlock();
+  };
+  reader.readAsDataURL(file);
+}
+function removeNoteImage() {
+  _noteImageBase64 = null;
+  _noteImageChanged = true;
+  refreshNoteImageBlock();
+}
+function openNoteEditor(noteId) {
+  const n = (char.notes || []).find(x => x.id === noteId);
+  if (!n) { toast('No se encontró la nota'); return; }
+  document.getElementById('editor-modal').innerHTML = `
+    <div class="modal-overlay" onclick="if(event.target===this)closeEditor()">
+      <div class="modal-sheet">
+        <div class="modal-head">
+          <span class="modal-title">🗒️ Nota</span>
+          <button class="modal-close" onclick="closeEditor()">✕</button>
+        </div>
+        <div class="modal-body">
+          <label class="editor-field-label">Título</label>
+          <input type="text" id="editor-name" class="editor-input" style="text-align:left;font-size:.95rem" value="${esc(n.name)}">
+          <label class="editor-field-label" style="margin-top:8px">Cuerpo</label>
+          <textarea id="editor-text" class="editor-input editor-textarea" style="text-align:left;font-size:.85rem;font-weight:400">${esc(n.text)}</textarea>
+          ${noteImageBlock(n.imageData)}
+        </div>
+        ${editorFootRow('closeEditor()', `saveNoteEdit('${noteId}')`, `deleteNoteFromEditor('${noteId}')`)}
+      </div>
+    </div>`;
+}
+async function deleteNoteFromEditor(noteId) {
+  const n = (char.notes || []).find(x => x.id === noteId);
+  const name = n ? n.name : 'esta nota';
+  if (!confirm(`¿Eliminar "${name}"? No se puede deshacer desde la app.`)) return;
+  await applyXmlEdit(doc => {
+    const el = locateNoteEl(doc, noteId);
+    if (!el) return;
+    setChildText(doc, el, 'pwaDeleted', '1');
+  });
+  closeEditor();
+  toast(`${name} eliminada`);
+}
+async function saveNoteEdit(noteId) {
+  const name = document.getElementById('editor-name').value.trim();
+  const text = document.getElementById('editor-text').value;
+  if (!name) { toast('Ponele un título'); return; }
+  const imageChanged = _noteImageChanged;
+  const imageBase64 = _noteImageBase64;
+  await applyXmlEdit(doc => {
+    const el = locateNoteEl(doc, noteId);
+    if (!el) return;
+    setChildText(doc, el, 'name', name);
+    setChildText(doc, el, 'text', text);
+    if (imageChanged) setNoteImage(doc, el, imageBase64);
+  });
+  closeEditor();
+  toast(`${name} guardada`);
+}
+function openNewNoteEditor() {
+  document.getElementById('editor-modal').innerHTML = `
+    <div class="modal-overlay" onclick="if(event.target===this)closeEditor()">
+      <div class="modal-sheet">
+        <div class="modal-head">
+          <span class="modal-title">🗒️ Nueva nota</span>
+          <button class="modal-close" onclick="closeEditor()">✕</button>
+        </div>
+        <div class="modal-body">
+          <label class="editor-field-label">Título</label>
+          <input type="text" id="editor-name" class="editor-input" style="text-align:left;font-size:.95rem" placeholder="Título de la nota">
+          <label class="editor-field-label" style="margin-top:8px">Cuerpo</label>
+          <textarea id="editor-text" class="editor-input editor-textarea" style="text-align:left;font-size:.85rem;font-weight:400" placeholder="Lo que quieras anotar"></textarea>
+          ${noteImageBlock(null)}
+        </div>
+        ${editorFootRow('closeEditor()', 'saveNewNoteEdit()')}
+      </div>
+    </div>`;
+}
+async function saveNewNoteEdit() {
+  const name = document.getElementById('editor-name').value.trim();
+  const text = document.getElementById('editor-text').value.trim();
+  if (!name) { toast('Ponele un título'); return; }
+  const imageBase64 = _noteImageBase64;
+  await applyXmlEdit(doc => {
+    const el = createNoteEl(doc, name, text);
+    if (imageBase64) setNoteImage(doc, el, imageBase64);
+  });
+  closeEditor();
+  toast(`${name} agregada`);
 }
 
 
