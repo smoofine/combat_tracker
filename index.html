@@ -2136,6 +2136,53 @@ function detectEffectKey(name, text) {
   return null;
 }
 
+// ── Marcador [PWA-EFFECT] — respaldo homebrew para rasgos que EFFECT_NAME_MAP/
+// EFFECT_TAG_RULES no reconocen (nombre propio, homebrew, variante casera de un
+// hechizo RAW). Misma convención que [PWA-BONUS] (ver 1.8/§2.6 CONTEXTO): texto
+// libre al final de <text>, inerte si se reabre en FC5e.
+//
+// `flags` SOLO admite los mechanicFlags que ya son booleanos puros en
+// buildSuggestions/hasEffect (sin magnitud propia de un hechizo puntual —
+// Bendición/Escudo de Fe/Auxilio/etc. quedan afuera a propósito, porque su
+// número está cableado en el código para ESE hechizo específico, no es un
+// parámetro genérico). hex_active es el único con una magnitud (+d6
+// esperado), pero ya está aliasado con hunters_mark_active en buildSuggestions
+// y funciona como "bono genérico de daño por golpe", no atado a Maldición.
+const EFFECT_MARKER_RE = /\[PWA-EFFECT flags=([a-z_,]*) conc=([01]) target=(self|ally|target|area)\]/;
+const EFFECT_MARKER_VALID_FLAGS = new Set([
+  'advantage_atk', 'prevents_spellcasting', 'bps_resistance',
+  'extra_attack_action', 'disadvantage_vs_self', 'hex_active'
+]);
+function parseEffectMarker(text) {
+  const m = (text || '').match(EFFECT_MARKER_RE);
+  if (!m) return null;
+  const flags = m[1].split(',').map(f => f.trim()).filter(f => EFFECT_MARKER_VALID_FLAGS.has(f));
+  return { flags, conc: m[2] === '1', target: m[3] };
+}
+
+// Resuelve effectKey para una habilidad: el marcador explícito (si está
+// presente) gana siempre sobre el catálogo por nombre/texto — una
+// declaración a propósito del usuario no debería depender de que el nombre
+// homebrew calce por casualidad con un patrón de EFFECT_NAME_MAP. Si hay
+// marcador, sintetiza una entrada de EFFECT_CATALOG bajo una key estable
+// (derivada del id posicional de la habilidad — e{idx}/sp{classIdx}_{i}) y
+// de ahí en más reutiliza el mismo motor (activateEffect/hasEffect/render)
+// sin ninguna ruta paralela.
+function resolveEffectInfo(name, text, stableId) {
+  const marker = parseEffectMarker(text);
+  if (marker) {
+    const key = `custom_${stableId}`;
+    EFFECT_CATALOG[key] = {
+      label: `⚙️ ${name.trim()}`,
+      mechanicFlags: marker.flags,
+      concentration: marker.conc,
+      appliesTo: marker.target
+    };
+    return { effectKey: key, selfOrAlly: false };
+  }
+  return detectEffectKey(name, text);
+}
+
 // ── Active effects helpers ───────────────────────────
 function hasEffect(flag) {
   return Object.values(G.activeEffects || {}).some(e => e.mechanicFlags.includes(flag));
@@ -2445,7 +2492,7 @@ function buildAbilities(entries, level, mods, prof, weapons, spellEntries, spell
     const once   = /once (?:on each|per) turn|una vez por turno/i.test(e.text);
     const desc   = shortDesc(e.text);
     const full   = fullDescClean(e.text);
-    const effInfo = detectEffectKey(e.name, e.text);
+    const effInfo = resolveEffectInfo(e.name, e.text, `e${idx}`);
     const isConcentration = !!(effInfo?.effectKey && EFFECT_CATALOG[effInfo.effectKey]?.concentration);
     const atkCount = (type === 'action' || type === 'bonus') ? parseAttackCount(e.text) : null;
 
@@ -2491,7 +2538,7 @@ function buildAbilities(entries, level, mods, prof, weapons, spellEntries, spell
     }
     const desc = shortDesc(sp.text);
     const spellAbilityMod = (sp.abilityIdx !== null) ? mods[ABILITY_KEYS[sp.abilityIdx]] : null;
-    const effInfo = detectEffectKey(sp.name, sp.text);
+    const effInfo = resolveEffectInfo(sp.name, sp.text, sp.id);
 
     // Concentration detected from the spell's own duration field (most reliable
     // source — FC5e always sets this for concentration spells). Falls back to
