@@ -173,7 +173,6 @@ html,body{height:100%;background:var(--bg);color:var(--text);
 .btn-ctrl{flex:1;background:var(--s2);border:1px solid var(--border);color:var(--text);
   padding:8px 4px;border-radius:var(--r-sm);font-size:.78rem;cursor:pointer;text-align:center}
 .btn-ctrl:active{opacity:.6}
-.btn-ctrl.accent{color:var(--blue);border-color:var(--blue-border)}
 .btn-ctrl.danger{color:var(--red);border-color:var(--red-border)}
 
 /* Section */
@@ -932,13 +931,13 @@ function parseFC5eXML(xml, equipOverrides) {
     }
     direct.forEach(f => {
       const n = $(f,'name'), tx = $(f,'text');
-      if (n.length > 1) allFeats.push({ name:n, text:tx, source:'class', classIdx, el:f, deleted: $(f,'pwaDeleted')==='1' });
+      if (n.length > 1) allFeats.push({ name:n, text:tx, source:'class', classIdx, el:f, deleted: $(f,'pwaDeleted')==='1', custom: $(f,'pwaCustom')==='1' });
     });
   });
   ['race','background'].forEach(src => {
     $$(ch.querySelector(src), 'feat').forEach(f => {
       const n = $(f,'name'), tx = $(f,'text');
-      if (n.length > 1) allFeats.push({ name:n, text:tx, source:src, el:f, deleted: $(f,'pwaDeleted')==='1' });
+      if (n.length > 1) allFeats.push({ name:n, text:tx, source:src, el:f, deleted: $(f,'pwaDeleted')==='1', custom: $(f,'pwaCustom')==='1' });
     });
   });
 
@@ -952,7 +951,7 @@ function parseFC5eXML(xml, equipOverrides) {
   // pasiva/etc.), etiquetadas source:'feat' para distinguirlas en la UI.
   const charFeats = [...ch.children]
     .filter(c => c.tagName.toLowerCase() === 'feat')
-    .map(f => ({ name:$(f,'name'), text:$(f,'text'), source:'feat', el:f, deleted: $(f,'pwaDeleted')==='1' }))
+    .map(f => ({ name:$(f,'name'), text:$(f,'text'), source:'feat', el:f, deleted: $(f,'pwaDeleted')==='1', custom: $(f,'pwaCustom')==='1' }))
     .filter(f => f.name.length > 1);
 
   // ── Items: metadatos + estado de equipado ──────────────────────────
@@ -2430,7 +2429,13 @@ function buildAbilities(entries, level, mods, prof, weapons, spellEntries, spell
     // id `e{idx}`— sea estable ante toggles de equipar/desequipar (§2.9).
     if (e.equipped === false && !e.alwaysActive) return;
     if (e.deleted) return;
-    if (SKIP_NAMES.test(e.name) || SKIP_NAMES_EXACT.test(e.name.trim())) return;
+    // El blacklist de nombres (boilerplate de FC5e: "Description",
+    // "Languages", "Suggested Characteristics", etc.) NUNCA se aplica a
+    // contenido creado/editado por el jugador desde el editor de la PWA
+    // (`e.custom`, marcador <pwaCustom>) — de lo contrario un rasgo
+    // homebrew que el jugador nombró, p.ej., "Idiomas" quedaba invisible
+    // y sin forma de editarlo (no hay tarjeta que long-pressear).
+    if (!e.custom && (SKIP_NAMES.test(e.name) || SKIP_NAMES_EXACT.test(e.name.trim()))) return;
     if (e.text.length < 30) return;
 
     const key = e.name.toLowerCase();
@@ -2468,8 +2473,10 @@ function buildAbilities(entries, level, mods, prof, weapons, spellEntries, spell
       // Passive / always-on traits: show in dedicated section if the text
       // has meaningful mechanical content (≥40 chars, not pure proficiency
       // or flavor). Confirmed useful against all 6 corpus characters.
+      // El nombre-blacklist (SKIP_PASSIVE) tampoco aplica a contenido
+      // creado/editado por el jugador — mismo criterio que arriba.
       const desc = shortDesc(e.text);
-      if (e.text && e.text.length >= 40 && desc.length >= 20 && !SKIP_PASSIVE.test(e.name.trim())) {
+      if (e.text && e.text.length >= 40 && desc.length >= 20 && (e.custom || !SKIP_PASSIVE.test(e.name.trim()))) {
         seen.add(key);
         const full = fullDescClean(e.text);
         out.passive.push({
@@ -2787,7 +2794,6 @@ function render() {
 
   // ── Controls ─────────────────────────────────────
   h += `<div class="ctrl-row">
-    <button class="btn-ctrl accent" onclick="finTurn()" title="Termina tu turno y habilita la reacción (no avanza la ronda)">Fin de turno</button>
     <button class="btn-ctrl" onclick="shortRest()">Desc. corto</button>
     <button class="btn-ctrl danger" onclick="longRest()">Desc. largo</button>
   </div>`;
@@ -2818,12 +2824,10 @@ function render() {
     const abs = all.filter(a => !G.hidden.abilities[a.id]);
     hiddenACount += all.length - abs.length;
     if (!abs.length) return;
-    const reactionLocked = sec.key === 'reaction' && !G.reactionAvailable;
-    const slotUsed = G[sec.flag] || reactionLocked;
+    const slotUsed = G[sec.flag];
     const collapsed = !!G.collapsed[sec.key];
 
-    // Undo button: shown when this section's action has actually been spent
-    // (no tiene sentido "deshacer" una reacción que aún no está disponible)
+    // Undo button: shown when this section's action has actually been spent.
     const undoBtn = G[sec.flag]
       ? `<button class="undo-btn" onclick="event.stopPropagation();undoAction('${sec.flag}')" title="Deshacer">↩</button>`
       : '';
@@ -2833,7 +2837,6 @@ function render() {
       <span class="sec-name">${sec.label} (${abs.length})</span>
       <span style="margin-left:auto;display:flex;align-items:center;gap:6px">
         ${G[sec.flag] ? '<span class="sec-used" style="margin-left:0">usada</span>' : ''}
-        ${reactionLocked ? '<span class="sec-used" style="margin-left:0">tras fin de turno</span>' : ''}
         ${undoBtn}
         <span class="chev">▾</span>
       </span>
@@ -3059,7 +3062,6 @@ function matchesCategory(tags, cat) {
 
 function abilityAvailable(ab, secFlag) {
   if (G[secFlag]) return false;
-  if (secFlag === 'reactionUsed' && !G.reactionAvailable) return false;
   if (ab.once && G.oncePerTurn[ab.id]) return false;
 
   // Cannot cast spells while raging
@@ -3575,6 +3577,16 @@ const INV_CATEGORY_META = {
   other:    { label:'Otros objetos equipables', emoji:'🎒' },
 };
 
+// Ítems sin <quantity> en el XML son, por convención de FC5e, "1 de esto"
+// (ver CONTEXTO_PROYECTO.md §1.6) — nunca se deja el campo vacío en la UI,
+// siempre se muestra un número concreto.
+function displayQty(it) {
+  return it.quantity !== '' ? it.quantity : '1';
+}
+function qtyBadgeHtml(it) {
+  return `<span class="inv-plain-qty">×${esc(displayQty(it))}</span>`;
+}
+
 function renderInventorySection() {
   // Personajes cargados antes de esta función no tienen char.items
   // cacheado (ni el XML crudo guardado) — hace falta reimportar una vez.
@@ -3598,8 +3610,14 @@ function renderInventorySection() {
   </div>`;
   if (collapsed) return h + `</div>`;
 
-  const equippableItems = char.items.filter(it => it.equippable || it.isPotion);
-  const plainItems      = char.items.filter(it => !it.equippable && !it.isPotion);
+  // Tres grupos, mutuamente excluyentes: equipable (con tarjeta completa +
+  // toggle de equipar), Riqueza/moneda (propia categoría, editable pero sin
+  // toggle de equipar — no tiene sentido "equipar" oro) y Otros objetos
+  // (bártulos mundanos/munición, tampoco equipables). Los tres son
+  // editables por long-press — antes solo el primero lo era.
+  const equippableItems = char.items.filter(it => (it.equippable || it.isPotion) && !it.isCurrency);
+  const currencyItems   = char.items.filter(it => it.isCurrency);
+  const plainItems      = char.items.filter(it => !it.equippable && !it.isPotion && !it.isCurrency);
 
   const groupOrder = ['weapon','armor','shield','ring','wondrous','potion','other'];
   const grouped = {};
@@ -3630,18 +3648,36 @@ function renderInventorySection() {
           ${desc ? `<div class="ab-desc" id="desc-${it.id}">${esc(desc)}</div>` : ''}
           ${full !== desc && desc ? `<span class="ab-more" id="more-${it.id}" onclick="toggleDesc('${it.id}')">ver más ▾</span>` : ''}
         </div>
-        <div class="ab-right">${toggle}</div>
+        <div class="ab-right">${qtyBadgeHtml(it)}${toggle}</div>
       </div>`;
     });
   });
 
-  // Otros objetos: moneda, munición y bártulos mundanos sin efecto
-  // mecánico — solo informativos, no se equipan ni generan habilidades.
+  // Riqueza (moneda): categoría propia, separada de "Otros objetos" —
+  // editable por long-press (nombre/tipo/cantidad), sin toggle de equipar.
+  if (currencyItems.length) {
+    h += `<div class="inv-group-title">💰 Riqueza (Moneda)</div><div class="inv-plain-list">`;
+    currencyItems.forEach(it => {
+      h += `<div class="inv-plain-row editable-lp"
+        onpointerdown="lpStart(event,'item','${it.id}')" onpointermove="lpMove(event)"
+        onpointerup="lpEnd(event)" onpointercancel="lpCancel(event)">
+        <span class="inv-plain-name">${esc(it.name)}</span>${qtyBadgeHtml(it)}
+      </div>`;
+    });
+    h += `</div>`;
+  }
+
+  // Otros objetos: munición y bártulos mundanos sin efecto mecánico — no
+  // se equipan ni generan habilidades, pero siguen siendo editables (p.ej.
+  // ajustar la cantidad de flechas o raciones).
   if (plainItems.length) {
     h += `<div class="inv-group-title">🎒 Otros objetos</div><div class="inv-plain-list">`;
     plainItems.forEach(it => {
-      const qty = it.quantity ? `<span class="inv-plain-qty">×${esc(it.quantity)}</span>` : '';
-      h += `<div class="inv-plain-row"><span class="inv-plain-name">${esc(it.name)}</span>${qty}</div>`;
+      h += `<div class="inv-plain-row editable-lp"
+        onpointerdown="lpStart(event,'item','${it.id}')" onpointermove="lpMove(event)"
+        onpointerup="lpEnd(event)" onpointercancel="lpCancel(event)">
+        <span class="inv-plain-name">${esc(it.name)}</span>${qtyBadgeHtml(it)}
+      </div>`;
     });
     h += `</div>`;
   }
@@ -4701,6 +4737,11 @@ async function saveFeatEdit() {
     applyTextAndMods(doc, el, text, modsSnapshot);
     applyTraitProfs(doc, el, traitProfs);
     if (isDote) setChildText(doc, el, 'prereq', prereq);
+    // Marca el rasgo como contenido curado por el jugador: nunca se vuelve
+    // a ocultar por el blacklist de nombres de boilerplate FC5e (ver
+    // SKIP_NAMES/SKIP_PASSIVE en buildAbilities) — evita que renombrar/
+    // editar algo lo haga "desaparecer" sin aviso.
+    setChildBool(doc, el, 'pwaCustom', true);
   });
   closeEditor();
   toast(`${name} guardado`);
@@ -4770,6 +4811,9 @@ async function saveNewFeatEdit() {
     applyTextAndMods(doc, f, text, modsSnapshot);
     applyTraitProfs(doc, f, traitProfs);
     if (isDote && prereq) setChildText(doc, f, 'prereq', prereq);
+    // Contenido creado por el jugador — nunca se filtra por el blacklist
+    // de nombres pensado para el boilerplate propio de FC5e (ver arriba).
+    setChildBool(doc, f, 'pwaCustom', true);
     parent.appendChild(f); // dote a nivel de personaje — mismo lugar que charFeats (ver 2.x) — u otro origen elegido arriba
   });
   closeEditor();
@@ -4874,8 +4918,10 @@ function openItemEditor(itemId) {
           <select id="editor-type" class="editor-input" style="text-align:left;font-weight:400" onchange="onItemTypeChange()">
             ${ITEM_TYPE_OPTS.map(([v,l]) => `<option value="${v}" ${v===curType?'selected':''}>${esc(l)}</option>`).join('')}
           </select>
-          <label class="editor-field-label" style="margin-top:8px">Nombre</label>
-          <input type="text" id="editor-name" class="editor-input" style="text-align:left;font-size:.95rem" value="${esc(it.name)}">
+          <div class="editor-row3" style="grid-template-columns:2fr 1fr;margin-top:8px">
+            <div><label class="editor-field-label">Nombre</label><input type="text" id="editor-name" class="editor-input" style="text-align:left;font-size:.95rem" value="${esc(it.name)}"></div>
+            <div><label class="editor-field-label">Cantidad</label><input type="number" id="editor-quantity" class="editor-input" value="${esc(displayQty(it))}" min="0"></div>
+          </div>
           <label class="editor-field-label" style="margin-top:8px">Descripción</label>
           <textarea id="editor-text" class="editor-input editor-textarea" style="text-align:left;font-size:.85rem;font-weight:400">${esc(stripTextMarkers(it.text||''))}</textarea>
           <div id="item-extra-fields">${itemTypeExtraFieldsHtml(curType, vals)}</div>
@@ -4901,6 +4947,7 @@ async function saveItemEdit(itemId) {
   const name = document.getElementById('editor-name').value.trim();
   const text = document.getElementById('editor-text').value;
   const type = document.getElementById('editor-type').value;
+  const quantity = document.getElementById('editor-quantity').value.trim();
   const extra = readItemExtraFields();
   if (!name) { toast('Ponele un nombre'); return; }
   const modsSnapshot = _modEdit;
@@ -4909,6 +4956,7 @@ async function saveItemEdit(itemId) {
     if (!el) return;
     setChildText(doc, el, 'name', name);
     setChildText(doc, el, 'type', type);
+    setChildText(doc, el, 'quantity', String(parseInt(quantity) || 0));
     applyItemExtraFields(doc, el, extra);
     applyTextAndMods(doc, el, text, modsSnapshot);
   });
@@ -4929,8 +4977,10 @@ function openNewItemEditor() {
           <select id="editor-type" class="editor-input" style="text-align:left;font-weight:400" onchange="onItemTypeChange()">
             ${ITEM_TYPE_OPTS.map(([v,l]) => `<option value="${v}" ${v==='14'?'selected':''}>${esc(l)}</option>`).join('')}
           </select>
-          <label class="editor-field-label" style="margin-top:8px">Nombre</label>
-          <input type="text" id="editor-name" class="editor-input" style="text-align:left;font-size:.95rem" placeholder="Nombre del objeto">
+          <div class="editor-row3" style="grid-template-columns:2fr 1fr;margin-top:8px">
+            <div><label class="editor-field-label">Nombre</label><input type="text" id="editor-name" class="editor-input" style="text-align:left;font-size:.95rem" placeholder="Nombre del objeto"></div>
+            <div><label class="editor-field-label">Cantidad</label><input type="number" id="editor-quantity" class="editor-input" value="1" min="0"></div>
+          </div>
           <label class="editor-field-label" style="margin-top:8px">Descripción</label>
           <textarea id="editor-text" class="editor-input editor-textarea" style="text-align:left;font-size:.85rem;font-weight:400" placeholder="Qué hace (opcional)"></textarea>
           <div id="item-extra-fields">${itemTypeExtraFieldsHtml('14', {})}</div>
@@ -4945,6 +4995,7 @@ async function saveNewItemEdit() {
   const name = document.getElementById('editor-name').value.trim();
   const text = document.getElementById('editor-text').value.trim();
   const type = document.getElementById('editor-type').value;
+  const quantity = document.getElementById('editor-quantity').value.trim();
   const extra = readItemExtraFields();
   if (!name) { toast('Ponele un nombre'); return; }
   const modsSnapshot = _modEdit;
@@ -4952,6 +5003,7 @@ async function saveNewItemEdit() {
     const ch = doc.querySelector('character');
     const it = createItemEl(doc, name, '');
     setChildText(doc, it, 'type', type);
+    setChildText(doc, it, 'quantity', String(parseInt(quantity) || 1));
     applyItemExtraFields(doc, it, extra);
     applyTextAndMods(doc, it, text, modsSnapshot);
     ch.appendChild(it);
@@ -4960,7 +5012,6 @@ async function saveNewItemEdit() {
   toast(`${name} agregado al inventario`);
 }
 
-// ── Conjuros ────────────────────────────────────────────────────────
 // ── Conjuros ────────────────────────────────────────────────────────
 // School/Ritual/Componentes/Materials/Dice Rolls — mismos campos que
 // muestra el editor de conjuro de FC5e, en su mismo orden (ver
@@ -5496,13 +5547,14 @@ function calcApply(mode) {
   save(); render();
 }
 
-// Reinicia el estado de turno: acción/acción adicional frescas, reacción
-// bloqueada de nuevo (hasta el próximo "Fin de turno"), contadores de "una
-// vez por turno" limpios, movimiento disponible de vuelta al máximo. Se
-// usa al empezar un turno nuevo (avanzar de ronda) y en los descansos.
+// Reinicia el estado de turno: acción/adicional/reacción frescas (las tres
+// disponibles de nuevo, incluida la reacción — se puede usar tanto durante
+// el turno como después de terminarlo, y una vez gastada queda bloqueada
+// hasta el próximo turno), contadores de "una vez por turno" limpios,
+// movimiento disponible de vuelta al máximo. Se usa al empezar un turno
+// nuevo (avanzar de ronda) y en los descansos.
 function resetTurnState() {
   G.actionUsed = G.bonusUsed = G.reactionUsed = false;
-  G.reactionAvailable = false;
   G.lastUsedInSlot = {};
   G.oncePerTurn = {};
   G.comboUsed = {};
@@ -5515,7 +5567,7 @@ function addRound(d) {
   G.round = Math.max(1, G.round + d);
   if (d > 0) {
     // "+" = terminaron los turnos de los demás (no rastreados) y empieza
-    // tu turno nuevo: acción/adicional frescas, reacción vuelve a bloquearse.
+    // tu turno nuevo: acción/adicional/reacción frescas de nuevo.
     resetTurnState();
     tickEffects();   // decrementa roundsLeft en efectos con duración de N rondas
     save(); render();
@@ -5524,13 +5576,6 @@ function addRound(d) {
     document.getElementById('hdr-round').textContent = G.round;
     save();
   }
-}
-
-function finTurn() {
-  // Termina TU turno (empiezan los turnos no rastreados de los demás):
-  // la reacción se habilita, pero la ronda NO avanza todavía.
-  G.reactionAvailable = true;
-  save(); render();
 }
 
 function shortRest() {
@@ -5645,7 +5690,7 @@ function genId() { return 'c_' + Date.now().toString(36) + Math.random().toStrin
 function freshG() {
   const allSectionKeys = ['action','bonus','reaction','trigger','suggestions','utility','passive','trackers','activeEffects','encounterState'];
   return { round:1, hp:null, tempHp:0, actionUsed:false, bonusUsed:false,
-    reactionUsed:false, reactionAvailable:false, lastUsedInSlot:{}, oncePerTurn:{}, trackers:{},
+    reactionUsed:false, lastUsedInSlot:{}, oncePerTurn:{}, trackers:{},
     collapsed: Object.fromEntries(allSectionKeys.map(k => [k, true])),
     triggerSel:{}, castLevel:{}, poolAmt:{},
     hidden:{ abilities:{}, trackers:{} }, equipped:{},
